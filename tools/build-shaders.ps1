@@ -1,4 +1,5 @@
-# Builds src\CasualtyVR.Shaders\Bundles\casualtyvr_shaders: CasualtyVR's shader variants of URP 14.0.12 (the game's
+# Builds src\CasualtyVR.Shaders\Bundles\casualtyvr_shaders: CasualtyVR's shader variants (fog and desktop flashlight)
+# of URP 14.0.12 (the game's
 # URP), compiled for D3D11 / Windows x64 by Unity 2022.3.62f3 in batch mode (docs/SHADERS.md). The bundle is
 # committed next to its sources, so normal builds (deploy-dev, package-release) do not need Unity; run this after
 # changing a shader.

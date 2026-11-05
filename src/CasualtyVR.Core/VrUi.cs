@@ -461,18 +461,20 @@ namespace CasualtyVR
             return Rect.MinMaxRect(o.x + Mathf.Min(a.x, b.x) * s.x, o.y + Mathf.Min(a.y, b.y) * s.y, o.x + Mathf.Max(a.x, b.x) * s.x, o.y + Mathf.Max(a.y, b.y) * s.y);
         }
 
-        private static bool MenuOpen()
+        internal static bool GameMenuOpen()
         {
             var pc = PlayerCamera.main;
             if (pc == null) return false;   // main menu is handled by theatre mode
-            if (PauseHandler.paused || VrSettingsMenu.IsOpen) return true;
+            if (PauseHandler.paused) return true;
             // First person: the inventory radial (opened at the chest) is used on the panel with the laser.
-            if (VrSpace.FirstPerson && pc.radialOpen) return true;
+            if (pc.radialOpen || (pc.radialMenu != null && pc.radialMenu.gameObject.activeInHierarchy)) return true;
             if (MinigameBase.main != null && MinigameBase.main.currentMinigame) return true;
             if (ConsoleScript.instance != null && ConsoleScript.instance.active) return true;
             if (Active(pc.woundView) || Active(pc.craftingPanel) || Active(pc.tradeMenu)) return true;
             return false;
         }
+
+        private static bool MenuOpen() => GameMenuOpen() || VrSettingsMenu.IsOpen;
 
         private static bool Active(GameObject go) => go != null && go.activeInHierarchy;
 

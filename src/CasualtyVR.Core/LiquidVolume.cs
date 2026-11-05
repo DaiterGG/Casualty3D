@@ -128,11 +128,10 @@ namespace CasualtyVR
                     float y = c.y + (edge ? 0f : 0.5f);
                     col = SurfaceColor(fm, type);
                     col.a = alpha;
-                    int i = verts.Count;
-                    verts.Add(new Vector3(c.x - 0.5f, y, zf)); verts.Add(new Vector3(c.x + 0.5f, y, zf));
-                    verts.Add(new Vector3(c.x + 0.5f, y, zb)); verts.Add(new Vector3(c.x - 0.5f, y, zb));
-                    for (int q = 0; q < 4; q++) { colors.Add(col); uvs.Add(new Vector2(0.5f, 0.5f)); }
-                    tris.Add(i); tris.Add(i + 1); tris.Add(i + 2); tris.Add(i); tris.Add(i + 2); tris.Add(i + 3);
+                    AddQuad(new Vector3(c.x - 0.5f, y, zf), new Vector3(c.x + 0.5f, y, zf),
+                        new Vector3(c.x + 0.5f, y, zb), new Vector3(c.x - 0.5f, y, zb), col);
+                    AddExposedSide(world, fluid, ry, j, k, -1, y, zf, zb, col);
+                    AddExposedSide(world, fluid, ry, j, k, 1, y, zf, zb, col);
                 }
             SurfaceCells = verts.Count / 4;
             mesh.Clear();
@@ -140,6 +139,54 @@ namespace CasualtyVR
             mesh.SetColors(colors);
             mesh.SetUVs(0, uvs);
             mesh.SetTriangles(tris, 0, true);
+        }
+
+        private void AddExposedSide(WorldGeneration world, byte[,] fluid, RangeI ry,
+            int x, int surfaceCell, int direction, float surfaceY, float zf, float zb, Color color)
+        {
+            int neighborX = x + direction;
+            if (neighborX <= 0 || neighborX >= fluid.GetLength(0) - 1) return;
+            float lowerY = float.NegativeInfinity;
+            bool foundNeighborSurface = false;
+            for (int y = Mathf.Max(ry.min, surfaceCell - 1); y <= Mathf.Min(ry.max - 1, surfaceCell + 1); y++)
+            {
+                if (fluid[neighborX, y] == 0 || fluid[neighborX, y + 1] != 0) continue;
+                bool edge = fluid[neighborX + 1, y] == 0 || fluid[neighborX - 1, y] == 0;
+                float candidate = world.BlockToWorldPos(new Vector2Int(neighborX, y)).y + (edge ? 0f : 0.5f);
+                if (!foundNeighborSurface || candidate > lowerY)
+                {
+                    lowerY = candidate;
+                    foundNeighborSurface = true;
+                }
+            }
+
+            // A missing neighboring surface is an open shoreline, not a vertical water wall.
+            if (!foundNeighborSurface || lowerY >= surfaceY - 0.001f) return;
+
+            float edgeX = world.BlockToWorldPos(new Vector2Int(x, surfaceCell)).x + direction * 0.5f;
+            var sideColor = color;
+            sideColor.a *= 0.8f;
+            AddDoubleSidedQuad(new Vector3(edgeX, lowerY, zf), new Vector3(edgeX, surfaceY, zf),
+                new Vector3(edgeX, surfaceY, zb), new Vector3(edgeX, lowerY, zb), sideColor);
+        }
+
+        private void AddQuad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Color color)
+        {
+            int i = verts.Count;
+            verts.Add(a); verts.Add(b); verts.Add(c); verts.Add(d);
+            for (int q = 0; q < 4; q++)
+            {
+                colors.Add(color);
+                uvs.Add(new Vector2(0.5f, 0.5f));
+            }
+            tris.Add(i); tris.Add(i + 1); tris.Add(i + 2);
+            tris.Add(i); tris.Add(i + 2); tris.Add(i + 3);
+        }
+
+        private void AddDoubleSidedQuad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Color color)
+        {
+            AddQuad(a, b, c, d, color);
+            AddQuad(d, c, b, a, color);
         }
 
         // FluidManager.liquidColors is the liquid's identity colour (water is white: its shader does the

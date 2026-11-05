@@ -1,18 +1,16 @@
-# CasualtyVR 1.3.0-test8
+# CasualtyVR
 
-A VR mod for **Casualties: Unknown** (Demo, game version 7.0.1). It shows the game as a 3D diorama in front of
-you: the terrain becomes solid blocks, liquids fill their tunnels, and characters and objects get real depth.
-You play with the controllers, and menus appear on a panel below the diorama. The flat game on your monitor is
-unchanged. There is also an experimental **first-person mode** (see below).
+A 3D first-person mod for **Casualties: Unknown** (Demo, game version 7.0.1). It puts the camera inside the
+character's world, turning the terrain into solid blocks with depth. The desktop mode uses mouse-look and the
+keyboard; the optional VR mode retains the 3D diorama and controller support.
 
 ## Requirements
 
 - Casualties: Unknown Demo 7.0.1 (Steam). Windows, or Linux through Proton (see *Linux* below).
 - [BepInEx 5.4.23.x](https://github.com/BepInEx/BepInEx/releases), **x64**, **Unity Mono** build (`BepInEx_win_x64_5.4.23.x.zip`)
-- An **OpenXR** runtime with a headset connected: Virtual Desktop (VDXR), SteamVR, Meta Quest Link, or another
-  OpenXR runtime with Direct3D 11 support (Windows Mixed Reality, Pimax, Varjo...). It was developed and tested on
-  a Meta Quest 3 with Virtual Desktop; other headsets and runtimes should work but are untested.
-- A Direct3D 11 GPU. The mod targets 90 fps and was developed on an RTX 3070.
+- A Direct3D 11 GPU.
+- Optional VR: an OpenXR runtime with a headset connected. It was developed and tested on a Meta Quest 3 with
+  Virtual Desktop; other headsets and runtimes should work but are untested.
 
 ## Install
 
@@ -20,12 +18,13 @@ unchanged. There is also an experimental **first-person mode** (see below).
    that BepInEx creates its folders, then quit.
 2. Extract this archive into the game folder, so you get
    `BepInEx\plugins\CasualtyVR\CasualtyVR.Core.dll` and `BepInEx\plugins\CasualtyVR\native\`.
-3. Start your OpenXR runtime (Virtual Desktop, SteamVR...), start the game, and press **F10** to switch to VR.
-   VR is off at launch by default. To start in VR every time, set `StartVrOnLaunch = true` under `[VR]` in
+3. Start the game. Desktop first-person mode starts automatically; press **F6** to switch back to the normal view.
+   To use optional VR, start your OpenXR runtime and press **F10**. To start in VR every time, set
+   `StartVrOnLaunch = true` under `[VR]` in
    `BepInEx\config\casualtyvr.core.cfg`.
 
 To uninstall, delete `BepInEx\plugins\CasualtyVR` (and `BepInEx\config\casualtyvr.core.cfg` if you want to
-reset the settings). Each page of the in-game VR settings also has a **Reset page** button (press it twice).
+reset the settings).
 
 ## Controls
 
@@ -56,48 +55,39 @@ Other controllers use the same layout, with these differences:
 | Windows Mixed Reality | Right trackpad click = A, right menu = B, left trackpad click = X, left menu = pause. No Y. |
 | HTC Vive wands | Trackpads act as sticks. Right trackpad click = A, right menu = B, left menu = pause. No X / Y. |
 
-Every control can be remapped in the VR settings, under *Controls*. The mapping goes through the game's own key
-binds, so rebinding the game's keys also carries over. The Index, Vive and Windows Mixed Reality layouts are new
-in 1.2 and have not been tried on real hardware yet: reports are welcome.
+The controller mappings are also available in the `[Controls]` section of the config file. The mapping goes
+through the game's own key binds, so rebinding the game's keys also carries over. The Index, Vive and Windows
+Mixed Reality layouts are new in 1.2 and have not been tried on real hardware yet: reports are welcome.
 
-Keyboard: **F10** start/stop VR, **F9** recenter, **Page Up / Page Down** zoom, **F11** show the menu panel,
-**F12** VR settings, **F8** 3D blocks on/off, **F7** first person on/off.
+Keyboard: **W / S** move forward/back in desktop first person, **Shift** crouch, **Space** jump, **Tab** inventory,
+**F6** toggle first-person view,
+**F10** start/stop VR, **F9** recenter, **Page Up / Page Down** zoom, **F11** show the menu panel,
+**F12** 3D settings, **F8** 3D blocks on/off.
 
-## VR settings
+## 3D settings
 
-Open the pause menu and press the round **VR** button (beside the gear), or press **F12**. The menu opens on its own panel in front of
-you. Point with the laser and click with the trigger: on/off rows are switches (click anywhere on the row), short
-lists are buttons side by side, and amounts are sliders (hold the trigger and drag, or use the fine `<` `>` at the
-ends). Point at a row to read what it does, under the list. Changes are saved immediately. A row that differs from
-its default has a reset button; **Reset page** (press twice) resets the whole page. **More settings** at the bottom
-shows the fine tuning. Long pages scroll with either stick, the arrows on the right or the mouse wheel.
+Open the pause menu and press the round **3D** button (beside the gear), or press **F12**. Use the mouse to choose
+a tab or setting; changes are saved when you close the menu with **Close** or **Esc**. The menu contains:
 
-- **Comfort:** turning (snap or smooth, and its speed), running speed, fall vignette, what happens when you are
-  knocked down, blackout when unconscious; camera smoothing under *More settings*.
-- **View:** zoom, diorama distance, window size, 3D blocks, fog style on foggy layers (Mist / Haze / Off) and fog
-  strength, hover highlight, rain; under *More settings* the window edge fade, block depths, pop-up depth, object
-  depth, character thickness and liquid depth.
-- **First person** and **Hands & body:** see *First-person mode*. Controller hands (in the diorama) and vibration
-  are under *Hands & body*.
-- **Controls:** a picture of both controllers with each input's action beside it. Click an action to choose another
-  for that input (any game action, named as in the game's own key-bind settings). Under *More settings*: the laser hand, the beam, and the minigame hand offset (shift the game's hand image relative to
-  where clicks land, if it does not line up with how you aim; 0 / 0 is the game's own placement).
-- **Menus & HUD:** HUD size, *Zoom the game's menus* (crafting, health and trade screens, and the inventory in first
-  person, on their own panel in front of you; on by default), cursor style (Hand / Arrow / Off) and size; under *More settings* the placement of
-  this panel, of the menu panel (dashboard) and of the main menu.
-- **Passthrough:** greenscreen. It paints everything outside the game window, and the game's background, in a
-  key colour (green, blue, magenta, black, white, or custom RGB under *More settings*), for chroma-key passthrough
-  such as Virtual Desktop's.
-- **About:** the version, the keys and where the logs are.
+- **First person:** tunnel width and sides, view distance, object facing, target highlight, sound positioning and
+  world scale. Camera smoothing is under *More settings*.
+- **3D world:** 3D blocks, fog, object extrusion, character thickness, and (under *More settings*) liquid depth and
+  the overall 3D depth scale.
+- **Desktop:** mouse sensitivity and keyboard controls.
 
 All settings are also in `BepInEx\config\casualtyvr.core.cfg`, with a few extra ones (for example
 `ThicknessLayers` under `[Voxels]`).
 
 ## First-person mode (experimental)
 
-Press **F7**, or open VR settings > *First person*, to play from the character's eyes. You stand inside the 3D blocks,
-looking along the tunnels. Menus, loading screens and the death screen still use the normal view. Press **F9**
-(or *Recenter*) to put your head at the character's head.
+Press **F6** to switch first-person view on or off. In desktop mode the mouse turns the view; **W / S** move forward
+and backward, **Shift** crouches, **Space** jumps, and mouse buttons retain the game's actions. The cursor is released
+for the game's Tab inventory and pause menus, and captured again when gameplay resumes; mouse sensitivity can be adjusted
+under `[Desktop]` in the config. In VR, open 3D settings > *First person*
+to play from the character's eyes. You stand inside the 3D blocks, looking along the tunnels; loading screens and
+full-screen menus use the normal view. In desktop first person, the held flashlight's 2D light is suppressed and a
+soft, camera-directed spotlight is applied to the 3D scene instead of drawing a triangle pointing up in the play plane.
+Press **F9** (or *Recenter*) to put your head at the character's head.
 
 **Moving**
 
@@ -133,39 +123,6 @@ You see your own arms, with their wounds, clothing and what they hold, and your 
 down. Items, creatures and objects turn to face you. What your character says shows as a caption in front of you;
 other characters' speech and damage numbers turn to face you. When lockpicking, the tip of the pick (or your
 finger) is exactly where it acts.
-
-**Settings**
-
-- *Comfort* tab:
-  - *Comfort preset*: **Intense** (the default: the camera moves as the character does), **Moderate** (snap blink,
-    steady eye height, a light fall vignette) or **Gentle** (also the diorama while knocked down, running at about
-    4 m/s, snap turning). Changing any of the settings below makes it your own mix.
-  - *Turning*: *Snap* (flick to turn around) or *Smooth*.
-  - *Running speed*, in metres per second: how fast your character runs in first person (6.5 m/s by default; the
-    flat game and the diorama always use the game's own speed).
-  - *Walk on a half push*: the left stick part way walks at this speed (1.4 m/s, a real walk), all the way runs.
-  - Fall vignette, *When knocked down* (stay in first person, or switch to the diorama), blackout when
-    unconscious.
-  - Under *More settings*: *Steady eye height* (no sway or bob from the character's animation; steps glide), *Snap
-    blink*, *Fade inside walls* (on by default: the view fades to black while your head is in a block or leaning
-    out of the tunnel), the smooth-turn speed and camera smoothing.
-- *First person* tab:
-  - Tunnel sides: cave walls, or a void that darkens with distance.
-  - Characters and objects facing you.
-  - *Highlight under your hand*: *Off* (the default), *Blocks* (the game's striped marker on the block you aim at,
-    for mining and building), or *All* (also the game's outline on items and objects).
-  - View distance; tunnel width and world scale under *More settings*.
-  - *Sound from your head*: you hear from where your head is and the way it faces (on by default).
-- *Hands & body* tab:
-  - *Character looks where you look*, and *Aim with* hand or head.
-  - Grab mode (hold the grip, or toggle), swing to attack, distance pull, the hand on what you can grab.
-  - *Crouch for real* and how far down your head must go; vibration (on/off and strength); *Heartbeat when in
-    danger* (off by default).
-  - Under *More settings*: vibration when hurt and when a hit lands, hand poses, touch minigames, your arms and your body (each on/off and a thickness), and how far behind your eyes the
-    body sits.
-
-The both-grips ragdoll control is off in first person, because the grips are your hands; bind ragdoll to another
-control in *Controls* if you want it.
 
 ## Linux (Proton)
 

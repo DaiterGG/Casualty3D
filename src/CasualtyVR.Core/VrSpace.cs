@@ -75,6 +75,14 @@ namespace CasualtyVR
             HeadForward = Rot(trackingRot) * Vector3.forward;
         }
 
+        public static void SetWorldHead(Vector3 position, Quaternion rotation)
+        {
+            HeadTrackingPos = ToTracking(position);
+            HeadTrackingRot = Quaternion.Inverse(Rotation) * rotation;
+            HeadPosition = position;
+            HeadForward = rotation * Vector3.forward;
+        }
+
         /// <summary>First person: the character's (smoothed) eye in world space, which the seated origin maps to.</summary>
         public static Vector3 Anchor => worldOrigin;
 

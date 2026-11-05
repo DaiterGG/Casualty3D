@@ -1,9 +1,7 @@
 # CasualtyVR
 
-A VR mod for **Casualties: Unknown** (Demo 7.0.1). The game plays out on a 3D diorama in front of you: the terrain
-becomes solid blocks, liquids fill their tunnels, and characters and objects get real depth. You play with motion
-controllers, and menus appear on a panel within reach. An experimental first-person mode puts you inside the world,
-with your own arms and body, grabbing and climbing with your hands.
+A 3D conversion mod for **Casualties: Unknown** (Demo 7.0.1). It offers a mouse-and-keyboard first-person desktop
+view by default, as well as an optional VR diorama with motion-controller support.
 
 ![CasualtyVR](docs/images/casualtyvr_nexus_main.png)
 
@@ -12,13 +10,14 @@ with your own arms and body, grabbing and climbing with your hands.
 Download it from [Nexus Mods](https://www.nexusmods.com/scavprototype/mods/783) or the [Releases](../../releases) page. Install instructions, controls and troubleshooting
 are in [release/README.md](release/README.md), and changes in [release/CHANGELOG.md](release/CHANGELOG.md).
 
-You need the game, [BepInEx 5](https://github.com/BepInEx/BepInEx/releases) (x64) and a PC VR headset with an OpenXR
-runtime (Virtual Desktop, SteamVR, Quest Link...). Press **F10** in game to switch to VR.
+You need the game and [BepInEx 5](https://github.com/BepInEx/BepInEx/releases) (x64). The mod now starts in a
+desktop first-person 3D view; press **F6** to return to the game's normal view. VR remains optional: connect an
+OpenXR headset and press **F10** to switch to VR.
 
 ## How it works
 
 - **`src/CasualtyVR.Core`**: the BepInEx plugin. Harmony patches on the game and Unity, the stereo camera rig,
-  the diorama (voxel terrain, sprite slabs, liquids), VR UI and input, first person, and the in-game VR settings.
+  the diorama (voxel terrain, sprite slabs, liquids), VR UI and input, first person, and the in-game 3D settings.
 - **`src/CasualtyVR.XrBridge`**: a small native DLL that talks to OpenXR and Direct3D 11 (session, swapchains,
   poses, actions). It is loaded by the plugin.
 - **`src/CasualtyVR.Shaders`**: a Unity project that builds the fog shaders into the committed `Bundles/casualtyvr_shaders`.

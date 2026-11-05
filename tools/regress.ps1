@@ -3,7 +3,7 @@
 # Dev copy only; never run two of these (or a suite and this) at once: they share the game, xr-sim and the logs.
 #
 #   tools/regress.ps1           everything (about 20 game launches)
-#   tools/regress.ps1 -Quick    a pass for iterating: fp-smoke -Quick, the lifecycle input session, the menu laser
+#   tools/regress.ps1 -Quick    a pass for iterating: fp-smoke -Quick, the lifecycle input session, the 3D settings entry
 #                               session and xr-tape (5 launches)
 #   tools/regress.ps1 -Skip vr-menu,fp-comfort
 #
@@ -24,7 +24,7 @@ $suites = if ($Quick) {
     @(
         @{ Name = "fp-smoke";     Script = "fp-smoke.ps1";     Args = @{ Quick = $true } },
         @{ Name = "vr-lifecycle"; Script = "vr-lifecycle.ps1"; Args = @{ Only = @("input") } },
-        @{ Name = "vr-menu";      Script = "vr-menu.ps1";      Args = @{ Only = @("laser") } },
+        @{ Name = "vr-menu";      Script = "vr-menu.ps1";      Args = @{ Only = @("pause") } },
         @{ Name = "xr-tape";      Script = "launch-dev.ps1";   Args = @{ Windowed = $true; XrSim = $true; XrTape = $true }; Rest = @("--cvr-vr", "--cvr-autostart", "--cvr-seed", "1234", "--cvr-quit"); Pass = "xrtape_check exit 0" }
     )
 } else {

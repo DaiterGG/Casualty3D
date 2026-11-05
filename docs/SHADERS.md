@@ -1,4 +1,4 @@
-# SHADERS — custom shaders through a Unity-built asset bundle (2026-10-06)
+# SHADERS — custom shaders through a Unity-built asset bundle (2026-11-05)
 
 ## Pipeline
 
@@ -17,11 +17,18 @@
 ## Shaders
 
 `CasualtyVR/Sprite-Lit-Fog` and `CasualtyVR/Sprite-Unlit-Fog` are URP 14.0.12's `Sprite-Lit-Default` and
-`Sprite-Unlit-Default`, generated from the package source and unchanged except for distance fog.
+`Sprite-Unlit-Default`, generated from the package source and extended for distance fog and desktop flashlight lighting.
 
 - **The fog:** in the Universal2D pass, the world position goes from vertex to fragment, and the colour is blended
   toward `_CvrFogColor` by distance from the camera, using `_CvrFogParams` (start, end, maximum, on). The fog code is
   in `CasualtyVRFog.hlsl`.
+- **Desktop flashlight:** while desktop first person is active, the held `Light2D` is suppressed during the camera
+  render and its position, direction, range and cone are supplied as shader globals. Lit and unlit sprite passes
+  evaluate a soft spotlight per fragment using `CasualtyVRFlashlight.hlsl`; the color fades with distance and outside
+  the cone. This lights the visible scene surfaces rather than drawing the game's 2D light shape.
+- **Shader swapping:** the same fog variants are also enabled for the duration of desktop first person so the
+  flashlight can affect existing game materials. The globals are zeroed after rendering; the normal shaders are
+  restored when desktop first person ends.
 - **Compiler workaround:** the D3D11 compiler raised an internal error ("invalid access of unbound variable") on the
   no-keyword lit variant until the lit colour went into a local first and the fog maths used float precision.
 

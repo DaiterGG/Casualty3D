@@ -205,11 +205,11 @@ namespace CasualtyVR
         /// Once per frame before the views are applied. Returns whether first person is in effect; when it is,
         /// VrSpace has been set up for it.
         /// </summary>
-        public bool Update(bool fullScreenUi, Vector3 seatedOrigin)
+        public bool Update(bool fullScreenUi, Vector3 seatedOrigin, bool? forceFirstPerson = null, float? desktopYaw = null)
         {
             var body = PlayerCamera.main != null ? PlayerCamera.main.body : null;
             var world = WorldGeneration.world;
-            bool want = Plugin.FpWanted && body != null && body.limbs != null && body.limbs.Length > 0 && body.limbs[0] != null
+            bool want = (forceFirstPerson ?? Plugin.FpWanted) && body != null && body.limbs != null && body.limbs.Length > 0 && body.limbs[0] != null
                         && !fullScreenUi && world != null && !world.generatingWorld
                         // Comfort option: the diorama while the body is down (ragdoll, knocked down), off by default.
                         && !(Plugin.FpRagdollView.Value == "Diorama" && !body.standing);
@@ -252,6 +252,7 @@ namespace CasualtyVR
                 if (Plugin.FpSnapBlink.Value) { blink = 1f; if (Plugin.Verbose) Plugin.Log.LogInfo("First person: snap turn with a blink"); }
             }
             if (Plugin.FpTurning.Value == "Smooth") yaw += TurnAxis * Plugin.FpTurnSpeed.Value * Time.unscaledDeltaTime;
+            if (desktopYaw.HasValue) yaw = desktopYaw.Value;
             yaw = Mathf.Repeat(yaw + 180f, 360f) - 180f;
             float s = Mathf.Sin(yaw * Mathf.Deg2Rad);
             if (Mathf.Abs(s) > 0.2f) facingRight = s > 0f;
@@ -500,6 +501,12 @@ namespace CasualtyVR
             {
                 if (!Active || PlayerCamera.main == null || __instance != PlayerCamera.main.body) return;
                 __result *= Mathf.Clamp(Plugin.FpMoveSpeed.Value, 0.3f, 1f);
+                if (DesktopFirstPerson.IsMovementActive)
+                {
+                    DesktopFirstPerson.SetBaseMovementSpeed(__result);
+                    __result *= DesktopFirstPerson.HorizontalMovementScale;
+                    return;
+                }
                 // Analog walking (FP 8a): a part-way push of the stick walks at a real walking speed (Meta: about 1.4 m/s).
                 if (Walking && Plugin.FpAnalogWalk.Value)
                 {
@@ -519,8 +526,18 @@ namespace CasualtyVR
         /// </summary>
         public static Quaternion FaceYaw(Vector3 pivot)
         {
+            return FaceYaw(pivot, lockDesktopDepth: false);
+        }
+
+        public static Quaternion FaceYaw(Vector3 pivot, bool lockDesktopDepth)
+        {
             if (!Active || !Plugin.FpFaceObjects.Value) return Quaternion.identity;
             Vector3 d = VrSpace.HeadPosition - pivot;
+            if (lockDesktopDepth && DesktopFirstPerson.IsDesktopRenderActive)
+            {
+                d.z = 0f;
+                if (Mathf.Abs(d.x) < 1e-4f) d.x = FacingRightNow ? 1f : -1f;
+            }
             d.y = 0f;
             return d.sqrMagnitude < 1e-4f ? Quaternion.identity : Quaternion.FromToRotation(Vector3.back, d.normalized);
         }
@@ -530,6 +547,8 @@ namespace CasualtyVR
         public static bool FacingRightNow { get; private set; } = true;
         /// <summary>Verbose perf: milliseconds spent in first-person code this frame (update) and in the eye-render hooks.</summary>
         public static readonly System.Diagnostics.Stopwatch UpdateTime = new System.Diagnostics.Stopwatch(), RenderTime = new System.Diagnostics.Stopwatch();
+
+        public void SetDesktopFlashlightMode(bool on) => shaderFog.SetDesktopFlashlightMode(on);
 
         // ---- fog and darkness by distance (FP-1) --------------------------------------------------------------
         // The diorama's mist is one flat veil in front of the game window; in first person it would be a pane through
@@ -1234,6 +1253,7 @@ namespace CasualtyVR
             frontWall.Clear();
             tileMirrors.Clear();
             backProxies.Clear();
+            if (instance == this) instance = null;
         }
     }
 }

@@ -132,6 +132,10 @@ namespace CasualtyVR
         internal static ConfigEntry<bool> FpSoundAtHead;
         internal static ConfigEntry<bool> FpRealCrouch;
         internal static ConfigEntry<float> FpCrouchDepth;
+        internal static ConfigEntry<float> DesktopMouseSensitivity;
+        internal static ConfigEntry<float> DesktopFieldOfView;
+        internal static ConfigEntry<bool> DesktopMinimap;
+        internal static ConfigEntry<KeyCode> DesktopDioramaKey;
         internal static ConfigEntry<bool> HapticDamage;
         internal static ConfigEntry<bool> HapticHits;
         internal static ConfigEntry<bool> HapticHeartbeat;
@@ -164,7 +168,7 @@ namespace CasualtyVR
             ZoomGameMenus = Config.Bind("Dashboard", "ZoomGameMenus", true, "Show the game's crafting, health (wound view) and trade screens, and the inventory in first person, on their own panel in front of you at the VR settings' size, instead of the whole screen on the dashboard.");
             DioramaDistance = Config.Bind("Diorama", "DistanceMetres", 1.2f, "Distance from the seated head origin to the game plane.");
             PopupScale = Config.Bind("Diorama", "PopupScale", 1f, "Multiplier on the pop-up-book layer depths (0 = flat card).");
-            VoxelsOn = Config.Bind("Voxels", "Enabled", true, "Show the terrain as 3D blocks in the headset (the flat game on the monitor is unchanged).");
+            VoxelsOn = Config.Bind("Voxels", "Enabled", true, "Show the terrain as 3D blocks in first-person mode.");
             VoxelKey = Config.Bind("Voxels", "ToggleKey", KeyCode.F8, "Switch between 3D blocks and the flat terrain while in VR.");
             VoxelFront = Config.Bind("Voxels", "FrontDepth", 1.0f, "How far the block faces stand out in front of the play plane, in blocks.");
             VoxelBack = Config.Bind("Voxels", "BackDepth", 2.0f, "How far the blocks reach behind the play plane, in blocks (tunnels are this deep).");
@@ -182,7 +186,7 @@ namespace CasualtyVR
             FpHighlight = Config.Bind("FirstPerson", "Highlight", "Off", new ConfigDescription("First person: what the game highlights under your hand. Off = nothing (the building preview still shows); Blocks = the striped marker on the block you aim at (mining, building); All = also the outline of items and objects.", new AcceptableValueList<string>("Off", "Blocks", "All")));
             Greenscreen = Config.Bind("Passthrough", "Greenscreen", false, "Paint everything outside the game window, and the game's backmost layer, in a key colour (for passthrough chroma keying, e.g. Virtual Desktop).");
             GreenscreenColor = Config.Bind("Passthrough", "GreenscreenColour", new Color(0f, 1f, 0f, 1f), "Key colour for the passthrough greenscreen.");
-            SettingsKey = Config.Bind("VR", "SettingsKey", KeyCode.F12, "Open/close the VR settings menu (also on the pause menu's VR button)");
+            SettingsKey = Config.Bind("VR", "SettingsKey", KeyCode.F12, "Open/close the 3D settings menu (also on the pause menu's 3D button)");
             HudScale = Config.Bind("Dashboard", "HudScale", 1f, "Size of the game's HUD and menus while in VR (scales the game's main canvas).");
             // New keys (2026-10-04): hands now default off and the hand cursor bigger; old keys are ignored.
             ShowHands = Config.Bind("Controllers", "ShowControllerHands", false, "Draw the game's hand art at the controllers.");
@@ -203,12 +207,16 @@ namespace CasualtyVR
             MinigameHandX = Config.Bind("Controllers", "MinigameHandOffsetX", 0f, "In VR, shift the minigame hand image right (+) or left (-) of where clicks land, in hand-image pixels (mirrored for the left hand).");
             MinigameHandY = Config.Bind("Controllers", "MinigameHandOffsetY", 0f, "In VR, shift the minigame hand image up (+) or down (-) relative to where clicks land, in hand-image pixels.");
             FpOn = Config.Bind("FirstPerson", "Enabled", false, "First-person view: your head at the character's head, inside the 3D blocks (experimental). Menus and loading screens still use the normal view.");
-            FpKey = Config.Bind("FirstPerson", "ToggleKey", KeyCode.F7, "Switch between the diorama and first person while in VR.");
+            FpKey = Config.Bind("FirstPerson", "ToggleKey", KeyCode.F6, "Switch between the diorama and first person in VR, or toggle desktop first-person mode.");
+            DesktopMouseSensitivity = Config.Bind("Desktop", "MouseSensitivity", 2f, "Mouse-look sensitivity in desktop first-person mode.");
+            DesktopFieldOfView = Config.Bind("Desktop", "FieldOfView", 90f, new ConfigDescription("Camera field of view in desktop first-person mode.", new AcceptableValueRange<float>(40f, 120f)));
+            DesktopMinimap = Config.Bind("Desktop", "Minimap", true, "Show a lightweight terrain sideview minimap in desktop first-person mode.");
+            DesktopDioramaKey = Config.Bind("Desktop", "DioramaViewKey", KeyCode.F7, "Return to the game's original side-on diorama camera from desktop first-person mode.");
             FpSides = Config.Bind("FirstPerson", "Sides", "CaveWalls", new ConfigDescription("What closes the tunnels' long sides in first person: the game's cave walls, or a black void.", new AcceptableValueList<string>("CaveWalls", "Void")));
             FpUnitsPerMetre = Config.Bind("FirstPerson", "UnitsPerMetre", 0f, "World scale in first person, blocks per metre. 0 = automatic: the character's eye height matches a 1.6 m standing eye height.");
             FpSmoothing = Config.Bind("FirstPerson", "Smoothing", 0.3f, "How much the view's position is smoothed as the character moves (0 = locked to the head, 1 = heavy).");
             FpViewDistance = Config.Bind("FirstPerson", "ViewDistance", 60f, "How far you can see in first person, in blocks (shorter = faster).");
-            FpCorridor = Config.Bind("FirstPerson", "CorridorWidth", 4f, "Width of the tunnels in first person, in blocks (the character is about 5 blocks tall).");
+            FpCorridor = Config.Bind("FirstPerson", "CorridorWidth", 6f, "Width of the tunnels in first person, in blocks (the character is about 5 blocks tall).");
             FpFaceLights = Config.Bind("FirstPerson", "FaceLights", true, "Turn the game's 2D lights to face you in first person (otherwise they are seen edge-on and light almost nothing).");
             FpLookWithHead = Config.Bind("FirstPerson", "LookWithHead", true, "In first person the character looks where you look (head and torso turn), instead of towards the cursor.");
             FpAimWith = Config.Bind("FirstPerson", "AimWith", "Hand", new ConfigDescription("What points the game's cursor in first person (attacks, mining, clicks): your right hand, or your head (gaze).", new AcceptableValueList<string>("Hand", "Head")));
@@ -271,6 +279,7 @@ namespace CasualtyVR
             host.hideFlags = HideFlags.HideAndDontSave;
             DontDestroyOnLoad(host);
             var rig = host.AddComponent<VrRig>();
+            host.AddComponent<DesktopFirstPerson>();
             host.AddComponent<WindowPlacement>();
             host.AddComponent<VrSettingsMenu>();
 

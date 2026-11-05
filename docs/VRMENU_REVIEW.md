@@ -117,7 +117,7 @@ Our menu's opaque black box with grey buttons reads as a debug panel next to thi
 
 | Item | What | Size |
 |---|---|---|
-| M4a Tabs by task | **Comfort** (new: FP-8 presets, turning, vignette, knocked-down view, speed) · **View** (diorama zoom, window, fog, blocks and depth) · **First person** (sides, faces, view distance, scale) · **Hands & body** · **Controls** · **Menus & HUD** (panel placement, HUD size, wrist HUD, cursor) · **Passthrough** · **About** (version, keys F7–F12, where the logs are) | M |
+| M4a Tabs by task | **Comfort** (new: FP-8 presets, turning, vignette, knocked-down view, speed) · **View** (diorama zoom, window, fog, blocks and depth) · **First person** (sides, faces, view distance, scale) · **Hands & body** · **Controls** · **Menus & HUD** (panel placement, HUD size, wrist HUD, cursor) · **Passthrough** · **About** (version, keys F6–F12, where the logs are) | M |
 | M4b Basic / Advanced | Each page shows the common settings; an *Advanced* switch at the bottom shows the tuning rows (thicknesses, smoothing, minigame offsets, colour channels) | S |
 | M4c Controls as a picture | A drawing of the controller (Touch outline in the game's line style) with each button's action next to it; click a label to change it. Instead of 21 identical rows | M–L |
 

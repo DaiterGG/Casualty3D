@@ -21,13 +21,13 @@ Machine-specific notes, if any, are in `CLAUDE.local.md` (not in git).
   `--cvr-dbg-modifier <i>` (docs/LAYER_MODIFIERS.md).
 - Headset feedback rounds: docs/FP7_RECEIPT.md (`--cvr-dbg-talk` speech + damage number, `--cvr-dbg-settings <tab> --cvr-dbg-reset`).
 - **Build order: docs/BUILD_PLAN.md** (phases 0–8; merges IMPROVEMENT_PLAN, FIRSTPERSON_REVIEW, VRMENU_REVIEW).
-  - Phase 1, the VR settings menu on its own panel: docs/PHASE1_RECEIPT.md, test `tools/vr-menu.ps1` (flags `--cvr-dbg-settings <tab|all>`,
-    `--cvr-dbg-settings-more`, `--cvr-dbg-menu-aim` logs xr-sim `hand r point` angles for a few controls).
+  - Phase 1, the 3D settings menu on its own panel: docs/PHASE1_RECEIPT.md, test `tools/vr-menu.ps1` (flags `--cvr-dbg-settings <tab|all>`,
+    `--cvr-dbg-settings-more`; current tabs are First person, 3D world, and Desktop).
   - Phase 2, first-person comfort (walk/run, wall fade, steady height, presets, scan staggering in `Scans.cs`): docs/PHASE2_RECEIPT.md,
     tests `tools/fp-comfort.ps1` and `tools/fp-path.ps1 [-Preset Moderate] [-Extra --cvr-dbg-nofilter]`; flags `--cvr-dbg-preset <name>`,
     `--cvr-dbg-pathdump` (per-frame eye path). Verbose perf adds `perf: scans (slowest ms)`: match the main perf line with `perf: .* fwd`.
-  - Phase 3, the menu in the game's look (`MenuArt.cs`: the game's uiBlock/uiBlockNano sprites, glow, tab icons, controller drawing),
-    the Controls picture and the round pause button: docs/PHASE3_RECEIPT.md, `tools/vr-menu.ps1 -Only controls,pause`.
+  - Phase 3, the menu in the game's look (`MenuArt.cs`: the game's uiBlock/uiBlockNano sprites, glow, tab icons),
+    and the round pause-menu entry: docs/PHASE3_RECEIPT.md, `tools/vr-menu.ps1 -Only pause`.
     `--cvr-dbg-uidump` (probe) lists the game's UI images and saves their sprites to `BepInEx/CasualtyVR/uidump`.
   - Phase 4a, hands: grip pose in the bridge (`VrInput.GripPose`; rays stay on the aim pose), swing/throw recipes in `HandMotion.cs`,
     motion takes (`--cvr-dbg-replay <folder|synthetic>`, `tools/motion-takes.ps1 [-Takes <dir>]`): docs/PHASE4A_RECEIPT.md.

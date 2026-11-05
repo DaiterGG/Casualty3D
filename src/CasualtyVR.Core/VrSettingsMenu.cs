@@ -10,10 +10,9 @@ using UnityEngine.UI;
 namespace CasualtyVR
 {
     /// <summary>
-    /// In-game VR settings (user request 2026-10-04), all backed by the BepInEx config (saved as they change). Opened
-    /// from a "VR" button added to the game's pause menu, or the SettingsKey (F12). It is an ordinary overlay canvas, so
-    /// VrUi moves it to the UI camera; in the headset it gets its own panel, cropped to the menu and opened in front of
-    /// you (docs/VRMENU_REVIEW.md M1a, M5b). The controller laser clicks it.
+    /// In-game 3D settings, backed by the BepInEx config. Opened from the "3D" button added to the game's pause menu,
+    /// or the SettingsKey (F12). It is an ordinary overlay canvas, so VrUi moves it to the UI camera; in VR it gets
+    /// its own panel, cropped to the menu and opened in front of you. Desktop users interact with it using the mouse.
     ///
     /// Layout (VRMENU_REVIEW M1b, M2, M4): tabs by task; up to eight big rows a page, scrolled with a stick, the wheel
     /// or the arrows; each row is a switch (click anywhere on the row), segmented choices, a slider (drag, with fine
@@ -77,15 +76,9 @@ namespace CasualtyVR
         /// <summary>Room around the frame for the glow; the cropped panel includes it.</summary>
         private const float Margin = 28f;
 
-        // Tabs by task (M4a), in two rows of four: eight across left "Passthrough" at 9 dp.
-        private static readonly string[] Tabs = { "Comfort", "View", "First person", "Hands & body", "Controls", "Menus & HUD", "Passthrough", "About" };
-        private static readonly (string name, Color c)[] KeyPresets =
-        {
-            ("Green", new Color(0f, 1f, 0f)), ("Blue", new Color(0f, 0f, 1f)), ("Magenta", new Color(1f, 0f, 1f)),
-            ("Black", Color.black), ("White", Color.white),
-        };
+        private static readonly string[] Tabs = { "First person", "3D world", "Desktop" };
 
-        private enum Kind { Switch, Choice, Slider, OptSlider, Stepper, Info, Header }
+        private enum Kind { Switch, Choice, Slider, OptSlider, Info, Header }
 
         private sealed class Row
         {
@@ -98,20 +91,18 @@ namespace CasualtyVR
             public Func<bool> GetOn; public Action<bool> SetOn;          // Switch, OptSlider
             public string[] Options; public Func<int> GetIndex; public Action<int> SetIndex;   // Choice
             public float Min, Max, Step; public Func<float> Get; public Action<float> Set; public Func<float, string> Format;   // Slider
-            public Func<string> Value; public Action<int> StepBy;       // Stepper, Info
-            public string Control;  // a controller binding: shown on the controller picture, not as a row (M4c)
+            public Func<string> Value;
         }
 
         private GameObject canvasGo, root;
         private RectTransform body, scrollTrack, scrollThumb;
         private GameObject scrollUp, scrollDown;
-        private TextMeshProUGUI desc, pictureDesc, moreLabel, resetLabel;
+        private TextMeshProUGUI desc, moreLabel, resetLabel;
         private GameObject descBg;
-        private string picking;   // Controls: the control whose action is being chosen
         private Button moreButton;
         private TMP_FontAsset font;
         private Sprite resetIcon, arrowIcon;
-        private string tab = "Comfort";
+        private string tab = "First person";
         private bool showMore;
         private int scroll;
         private List<Row> rows = new List<Row>();
@@ -119,6 +110,9 @@ namespace CasualtyVR
         private readonly List<Action> refreshers = new List<Action>();
         private readonly List<(Image image, TextMeshProUGUI text, string name)> tabButtons = new List<(Image, TextMeshProUGUI, string)>();
         private PauseHandler injectedFor;
+        private RectTransform pauseButtonTransform;
+        private Vector3 pauseButtonPosition;
+        private int pauseButtonAnimationIndex;
         private float nextRefresh, nextStickScroll, lastTick;
         private bool stickHeld;
         // "Reset page" (user, 2026-10-06): the first press arms it ("Press again"), a second within 3 s resets.
@@ -130,12 +124,10 @@ namespace CasualtyVR
         // ---- headless tests -----------------------------------------------------------------------------------
         // --cvr-dbg-settings <tab>: opens on that tab once gameplay is up; "all" shows each tab in turn, 3 s each.
         // --cvr-dbg-settings-more: with "More settings" shown. --cvr-dbg-reset: presses "Reset page" twice.
-        // --cvr-dbg-menu-aim: logs the xr-sim "hand r point" angles for a few controls (tools/vr-menu.ps1).
         private static readonly string DbgTab = ArgAfter("--cvr-dbg-settings");
         private static readonly bool DbgMore = Array.IndexOf(Environment.GetCommandLineArgs(), "--cvr-dbg-settings-more") >= 0;
-        private static readonly bool DbgAim = Array.IndexOf(Environment.GetCommandLineArgs(), "--cvr-dbg-menu-aim") >= 0;
         private bool dbgOpened;
-        private float dbgResetAt = -1f, dbgNextTab, dbgCheckAt = -1f, dbgAimAt = -1f;
+        private float dbgResetAt = -1f, dbgNextTab, dbgCheckAt = -1f;
 
         private static string ArgAfter(string flag)
         {
@@ -152,6 +144,11 @@ namespace CasualtyVR
             InjectPauseButton();
             if (resetArmedUntil > 0f && now > resetArmedUntil) DisarmReset();
             if (!IsOpen) return;
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                Close();
+                return;
+            }
             // Scrolling (M1b): either stick up/down (VrInput keeps it from the game meanwhile), the mouse wheel.
             float stick = VrInput.MenuStickY;
             if (Mathf.Abs(stick) > 0.6f)
@@ -179,7 +176,6 @@ namespace CasualtyVR
                 ShowTab(Array.Find(Tabs, t => t.StartsWith(DbgTab, StringComparison.OrdinalIgnoreCase)) ?? Tabs[0]);
                 dbgNextTab = now + 3f;
                 dbgResetAt = Array.IndexOf(Environment.GetCommandLineArgs(), "--cvr-dbg-reset") >= 0 ? now + 4f : -1f;
-                if (DbgAim) dbgAimAt = now + 2f;
             }
             if (dbgOpened && DbgTab == "all" && IsOpen && now >= dbgNextTab)
             {
@@ -192,7 +188,6 @@ namespace CasualtyVR
                 dbgResetAt = resetArmedUntil > 0f ? now + 1f : -1f;
             }
             if (dbgCheckAt > 0f && now >= dbgCheckAt) { dbgCheckAt = -1f; LogCheck(); }
-            if (dbgAimAt > 0f && now >= dbgAimAt) { dbgAimAt = -1f; LogAims(); }
         }
 
         public void Toggle()
@@ -226,7 +221,9 @@ namespace CasualtyVR
 
         public void Close()
         {
-            if (root != null) root.SetActive(false);
+            if (root == null) return;
+            Plugin.FpOn.ConfigFile.Save();
+            root.SetActive(false);
         }
 
         /// <summary>The part of the cropped panel (each side, as a fraction) outside the frame: VrUi's backing stops there.</summary>
@@ -252,7 +249,7 @@ namespace CasualtyVR
 
         // ---- pause-menu entry ------------------------------------------------------------------------
 
-        /// <summary>Clone the pause menu's Settings button into a "VR" button next to it.</summary>
+        /// <summary>Clone the pause menu's Settings button into a "3D" button next to it.</summary>
         private void InjectPauseButton()
         {
             var ph = PauseHandler.main;
@@ -270,10 +267,13 @@ namespace CasualtyVR
             var src = (RectTransform)settings.transform;
             rt.localPosition = ArcPosition(ph, settings, src);
             rt.localScale = Vector3.one;
+            pauseButtonTransform = rt;
+            pauseButtonPosition = rt.localPosition;
+            pauseButtonAnimationIndex = ph.buttons != null ? ph.buttons.Count : 0;
             var button = clone.GetComponent<Button>();
             button.onClick = new Button.ButtonClickedEvent();
             button.onClick.AddListener(Open);
-            // A round button like the game's three (M3d): their ring, with "VR" inside. Below the gear it was cut off at
+            // A round button like the game's three (M3d): their ring, with "3D" inside. Below the gear it was cut off at
             // the screen's edge (2026-10-04), so it continues their arc instead.
             MenuArt.Load();
             if (clone.TryGetComponent<Image>(out var img)) { img.sprite = MenuArt.PauseRing; img.color = Color.white; }
@@ -281,13 +281,31 @@ namespace CasualtyVR
             if (clone.TryGetComponent<UITooltip>(out var tip))
             {
                 tip.skipLocale = true;
-                tip.tipName = "VR settings";
+                tip.tipName = "3D settings";
                 tip.tipDesc = "Comfort, view, first person, hands, controls, menus, passthrough";
             }
             if (font == null && ph.pauseText != null) font = ph.pauseText.font;
-            var label = NewText(rt, "VR", 44, TextAlignmentOptions.Center, Color.white);
+            var label = NewText(rt, "3D", 44, TextAlignmentOptions.Center, Color.white);
             Stretch(label.rectTransform);
-            Plugin.Log.LogInfo($"VR settings: round button added to the pause menu at {rt.localPosition} (gear at {src.localPosition})");
+            Plugin.Log.LogInfo($"3D settings: round button added to the pause menu at {rt.localPosition} (gear at {src.localPosition})");
+        }
+
+        [HarmonyLib.HarmonyPatch(typeof(PauseHandler), nameof(PauseHandler.Update))]
+        private static class PauseButtonAnimationPatch
+        {
+            private static void Postfix(PauseHandler __instance)
+            {
+                var menu = Instance;
+                var button = menu != null ? menu.pauseButtonTransform : null;
+                if (button == null || __instance != menu.injectedFor) return;
+
+                float phase = Mathf.Clamp01(__instance.pauseProgress + menu.pauseButtonAnimationIndex * 0.1f);
+                button.localScale = Vector3.one * Utils.InOutQuint(phase);
+                button.localPosition = new Vector3(
+                    menu.pauseButtonPosition.x * (0.5f + Utils.OutCubic(phase) * 0.5f),
+                    menu.pauseButtonPosition.y * (0.5f + Utils.InOutCubic(phase) * 0.5f),
+                    menu.pauseButtonPosition.z);
+            }
         }
 
         /// <summary>
@@ -353,23 +371,21 @@ namespace CasualtyVR
             frame.raycastTarget = false;
             Stretch(frame.rectTransform);
 
-            var title = NewText(rrt, "VR settings", 46, TextAlignmentOptions.Left, Color.white);
+            var title = NewText(rrt, "3D settings", 46, TextAlignmentOptions.Left, Color.white);
             Place(title.rectTransform, Side, HeadY, 500f, HeadH);
-            var done = NewButton(rrt, "Done", 34, Close);
-            Place((RectTransform)done.transform, MenuW - Side - 200f, HeadY, 200f, HeadH);
+            var close = NewButton(rrt, "Close", 34, Close);
+            Place((RectTransform)close.transform, MenuW - Side - 200f, HeadY, 200f, HeadH);
             // Recenter is an action, not a setting: one button for every page. The panel moves in front of you again.
             var recenter = NewButton(rrt, "Recenter", 32, () => { VrRig.Instance?.Recenter(); VrUi.Current?.PlaceSettingsAgain(); });
             Place((RectTransform)recenter.transform, MenuW - Side - 200f - 16f - 240f, HeadY, 240f, HeadH);
 
-            const int perRow = 4;
+            int perRow = Tabs.Length;
             float tw = (BodyW - (perRow - 1) * 8f) / perRow;
             for (int i = 0; i < Tabs.Length; i++)
             {
                 var name = Tabs[i];
-                var b = NewButton(rrt, name, 36, () => { if (tab != name) { showMore = false; picking = null; ShowTab(name); } });
+                var b = NewButton(rrt, name, 36, () => { if (tab != name) { showMore = false; ShowTab(name); } });
                 var t = b.GetComponentInChildren<TextMeshProUGUI>();
-                // Long names ("Hands & body", "Passthrough") shrink to fit between the icon and the right edge; at a
-                // 30-px floor they ran over both (user's headset screenshot, 2026-10-23).
                 FitText(t, 24f);
                 Place((RectTransform)b.transform, Side + (i % perRow) * (tw + 8f), TabY + (i / perRow) * (TabH + 8f), tw, TabH);
                 // A pixel icon at 4 canvas pixels a texel, in the game's category colours (M3c).
@@ -438,14 +454,9 @@ namespace CasualtyVR
         {
             for (int i = body.childCount - 1; i >= 0; i--) Destroy(body.GetChild(i).gameObject);
             refreshers.Clear();
-            pictureDesc = null;
-            // Controls (M4c): a picture of the controllers with each control's action, instead of the rows.
-            bool picture = tab == "Controls" && !showMore;
-            Place(body, Side, BodyY, BodyW, picture ? DescY + DescH - BodyY : RowsShown * RowPitch);
-            descBg.SetActive(!picture);
-            if (picture) { shown = new List<Row>(); BuildControls(); }
-            if (DbgAim && dbgOpened) dbgAimAt = Time.unscaledTime + 1f;
-            shown = picture ? shown : rows.Where(r => !r.More && r.Control == null).ToList();
+            Place(body, Side, BodyY, BodyW, RowsShown * RowPitch);
+            descBg.SetActive(true);
+            shown = rows.Where(r => !r.More).ToList();
             int moreCount = rows.Count(r => r.More);
             if (showMore && moreCount > 0)
             {
@@ -490,16 +501,10 @@ namespace CasualtyVR
 
         private void ShowDesc(Row r)
         {
-            if (pictureDesc != null)
-            {
-                pictureDesc.text = r == null ? "Point at a control to see its action. Click it to choose another." : r.Desc;
-                pictureDesc.color = r == null ? DimText : Color.white;
-                return;
-            }
             if (desc == null) return;
             if (r == null)
             {
-                desc.text = tab == "About" ? "CasualtyVR: the game in VR. Keys work on the keyboard while VR runs." : "Point at a setting to see what it does.";
+                desc.text = "Point at a setting to see what it does.";
                 desc.color = DimText;
                 return;
             }
@@ -518,148 +523,6 @@ namespace CasualtyVR
         {
             PopupDepth.Scale = Plugin.PopupScale.Value;
             RefreshAll();
-        }
-
-        // ---- the Controls page: a picture of the controllers (VRMENU_REVIEW M4c, decision V5) ---------------------
-
-        private static readonly string[] LeftControls = { "L.trigger", "L.grip", "X", "Y", "Menu", "L.stickUp", "L.stickDown", "L.stickLeft", "L.stickRight", "L.stickClick" };
-        private static readonly string[] RightControls = { "R.trigger", "R.grip", "A", "B", "R.stickUp", "R.stickDown", "R.stickClick", "BothGrips" };
-        private const float PadScale = 4.4f;   // canvas pixels per texel of the controller drawing
-
-        /// <summary>
-        /// Both controllers drawn in the game's line style, each control's action in a box beside them with a leader line
-        /// to where the control is. Pointing at a box lights its line and says what it does; clicking it opens the picker.
-        /// The boxes are 64 px on a 65 px pitch (2.5 degrees at the bottom-left corner), using the description strip's room.
-        /// </summary>
-        private void BuildControls()
-        {
-            if (picking != null) { BuildPicker(); return; }
-            float h = DescY + DescH - BodyY;
-            const float colW = 396f, pitch = 65f, boxH = 64f;
-            float padW = MenuArt.PadW * PadScale, padH = MenuArt.PadH * PadScale;
-            float leftPadX = colW + 4f, rightPadX = BodyW - colW - 4f - padW, padY = 48f;
-            for (int side = 0; side < 2; side++)
-            {
-                bool left = side == 0;
-                float px = left ? leftPadX : rightPadX;
-                var title = NewText(body, left ? "Left" : "Right", 32, TextAlignmentOptions.Center, LabelCol);
-                Place(title.rectTransform, px, 0f, padW, 44f);
-                var pad = NewImage(body, left ? "Left controller" : "Right controller", LabelCol);
-                pad.sprite = MenuArt.Controller();
-                pad.raycastTarget = false;
-                // The right hand's is mirrored: flipped about its left edge, so it is placed at its right edge.
-                Place(pad.rectTransform, left ? px : px + padW, padY, padW, padH);
-                if (!left) pad.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
-                var controls = left ? LeftControls : RightControls;
-                float top = (h - controls.Length * pitch) * 0.5f;
-                for (int i = 0; i < controls.Length; i++)
-                {
-                    string key = controls[i];
-                    if (!Plugin.ControlBinds.TryGetValue(key, out var entry)) continue;
-                    var row = rows.FirstOrDefault(r => r.Control == key);
-                    float y = top + i * pitch;
-                    float bx = left ? 0f : BodyW - colW;
-                    var b = NewButton(body, "", 30, () => { picking = key; Plugin.Log.LogInfo($"VR settings: choosing an action for {key}"); Clicked(mini: true); Layout(); });
-                    b.name = "Control " + key;
-                    Place((RectTransform)b.transform, bx, y, colW, boxH);
-                    // Two lines, so they never overlap (user, 2026-10-23: side by side, long names ran into each other): the
-                    // control's name small at the top, its action (the game's own name, up to 23 letters) below at full width.
-                    var name = NewText(b.transform, ShortControl(key), 24, TextAlignmentOptions.TopLeft, LabelCol);
-                    Place(name.rectTransform, 10f, 3f, colW - 20f, 26f);
-                    var action = NewText(b.transform, "", 30, TextAlignmentOptions.BottomRight, Color.white);
-                    Place(action.rectTransform, 10f, 22f, colW - 20f, boxH - 25f);
-                    FitText(action, 24f);
-                    refreshers.Add(() => action.text = ActionName(entry.Value));
-                    // Leader line from the box to the control on the drawing.
-                    Vector2 a = MenuArt.Anchor(key);
-                    float ax = left ? px + (a.x + 0.5f) * PadScale : px + padW - (a.x + 0.5f) * PadScale;
-                    float ay = padY + (MenuArt.PadH - a.y - 0.5f) * PadScale;
-                    var from = new Vector2(left ? bx + colW : bx, y + boxH * 0.5f);
-                    // Hidden until you point at the box (user, 2026-10-23: all the lines at once looked messy).
-                    var line = Line(from, new Vector2(ax, ay), Color.clear);
-                    var dot = NewImage(body, "Anchor", Color.clear);
-                    dot.raycastTarget = false;
-                    Place(dot.rectTransform, ax - 5f, ay - 5f, 10f, 10f);
-                    var fx = b.GetComponent<Fx>();
-                    fx.Enter = () => { line.color = dot.color = FrameCol; ShowDesc(row); };
-                    fx.Exit = () => { line.color = dot.color = Color.clear; ShowDesc(null); };
-                    if (row != null) row.Desc = $"{ControlLabel(key)}: {ActionName(entry.Value)}. Click to choose another action.";
-                }
-            }
-            pictureDesc = NewText(body, "", 30, TextAlignmentOptions.Top, DimText);
-            pictureDesc.enableWordWrapping = true;
-            FitText(pictureDesc, 26f);
-            Place(pictureDesc.rectTransform, leftPadX, padY + padH + 16f, rightPadX + padW - leftPadX, h - padY - padH - 16f);
-            ShowDesc(null);
-        }
-
-        /// <summary>The action picker for one control: every game action as a button; the current one lit.</summary>
-        private void BuildPicker()
-        {
-            string key = picking;
-            if (!Plugin.ControlBinds.TryGetValue(key, out var entry)) { picking = null; BuildControls(); return; }
-            string def = Array.Find(VrInput.Defaults, d => d.control == key).action;
-            var title = NewText(body, $"{ControlLabel(key)}: choose an action", 36, TextAlignmentOptions.MidlineLeft, Color.white);
-            Place(title.rectTransform, 8f, 0f, BodyW - 16f, 56f);
-            const int cols = 4;
-            float w = (BodyW - (cols - 1) * 10f) / cols;
-            var actions = VrInput.Actions;
-            for (int i = 0; i < actions.Length; i++)
-            {
-                string act = actions[i];
-                var b = NewButton(body, ActionName(act) + (act == def ? " (default)" : ""), 30, () =>
-                {
-                    entry.Value = act;
-                    picking = null;
-                    Clicked();
-                    Layout();
-                });
-                b.name = "Action " + act;
-                Place((RectTransform)b.transform, (i % cols) * (w + 10f), 64f + (i / cols) * 80f, w, 72f);
-                var label = b.GetComponentInChildren<TextMeshProUGUI>();
-                label.enableWordWrapping = true;   // "Expand item description" takes two lines
-                label.rectTransform.offsetMin = new Vector2(8f, 0f);
-                label.rectTransform.offsetMax = new Vector2(-8f, 0f);
-                FitText(label, 26f);
-                var img = b.GetComponent<Image>();
-                bool chosen = entry.Value == act;
-                SetSelected(img, chosen);
-            }
-            int last = (actions.Length + cols - 1) / cols;
-            var back = NewButton(body, "Back", 32, () => { picking = null; Clicked(mini: true); Layout(); });
-            Place((RectTransform)back.transform, 0f, 64f + last * 80f, w, 72f);
-        }
-
-        /// <summary>A thin line on the body from a to b (top-left coordinates).</summary>
-        private Image Line(Vector2 a, Vector2 b, Color c)
-        {
-            var img = NewImage(body, "Line", c);
-            img.raycastTarget = false;
-            var rt = img.rectTransform;
-            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
-            rt.pivot = new Vector2(0f, 0.5f);
-            rt.anchoredPosition = new Vector2(a.x, -a.y);
-            Vector2 d = new Vector2(b.x - a.x, -(b.y - a.y));
-            rt.sizeDelta = new Vector2(d.magnitude, 3f);
-            rt.localEulerAngles = new Vector3(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg);
-            return img;
-        }
-
-        private static string ShortControl(string control)
-        {
-            switch (control)
-            {
-                case "R.trigger": case "L.trigger": return "Trigger";
-                case "R.grip": case "L.grip": return "Grip";
-                case "BothGrips": return "Both grips";
-                case "R.stickUp": case "L.stickUp": return "Stick up";
-                case "R.stickDown": case "L.stickDown": return "Stick down";
-                case "L.stickLeft": return "Stick left";
-                case "L.stickRight": return "Stick right";
-                case "R.stickClick": case "L.stickClick": return "Stick click";
-                case "Menu": return "Menu";
-                default: return control;
-            }
         }
 
         // ---- rows ------------------------------------------------------------------------------------
@@ -731,18 +594,6 @@ namespace CasualtyVR
                     var slider = BuildSlider(bg.rectTransform, CtrlX + 132f, CtrlW - 132f, r, 130f);
                     refreshers.Add(sw);
                     refreshers.Add(slider);
-                    break;
-                }
-                case Kind.Stepper:
-                {
-                    var minus = NewButton(bg.rectTransform, "<", 34, () => { r.StepBy(-1); Clicked(); });
-                    Place((RectTransform)minus.transform, CtrlX, (RowH - Btn) * 0.5f, Btn, Btn);
-                    var plus = NewButton(bg.rectTransform, ">", 34, () => { r.StepBy(+1); Clicked(); });
-                    Place((RectTransform)plus.transform, CtrlX + CtrlW - Btn, (RowH - Btn) * 0.5f, Btn, Btn);
-                    var value = NewText(bg.rectTransform, "", 34, TextAlignmentOptions.Center, Color.white);
-                    FitText(value, 28f);
-                    Place(value.rectTransform, CtrlX + Btn + 8f, 0f, CtrlW - 2f * Btn - 16f, RowH);
-                    refreshers.Add(() => value.text = r.Value());
                     break;
                 }
                 case Kind.Info:
@@ -920,75 +771,16 @@ namespace CasualtyVR
             var list = new List<Row>();
             switch (name)
             {
-                case "Comfort":
-                    // First-person comfort (docs/FIRSTPERSON_REVIEW.md FP-8): the preset sets the rows below it and those
-                    // under More settings; changing any of them makes it your own mix (no preset lit).
-                    list.Add(new Row
-                    {
-                        Kind = Kind.Choice, Label = "Comfort preset", NoReset = true,
-                        Desc = "Sets the comfort options at once. Intense: the game moves you as it moves the character. Moderate: snap blink, steady eye height, a light fall vignette. Gentle: also the diorama while knocked down, running at about 4 m/s and snap turning.",
-                        Options = ComfortPresets.Names, GetIndex = ComfortPresets.Current, SetIndex = i => ComfortPresets.Apply(ComfortPresets.Names[i]),
-                    });
-                    list.Add(Choice("Turning", Plugin.FpTurning, ("Snap", "Snap"), ("Smooth", "Smooth")));
-                    list.Add(new Row
-                    {
-                        Kind = Kind.Slider, Label = "Running speed", Entries = new ConfigEntryBase[] { Plugin.FpMoveSpeed },
-                        Desc = "How fast you run in first person, with the stick pushed all the way (a real run is about 3 m/s). The flat game and the diorama keep the game's own speed.",
-                        Min = 0.5f, Max = 1f, Step = 0.05f, Get = () => Plugin.FpMoveSpeed.Value, Set = v => Plugin.FpMoveSpeed.Value = v, Format = RunSpeedText,
-                    });
-                    list.Add(OptSlider("Walk on a half push", Plugin.FpAnalogWalk, Plugin.FpWalkSpeed, 0.8f, 3f, 0.1f, v => $"{v:F1} m/s"));
-                    list.Add(Slider("Fall vignette", Plugin.FpVignette, 0f, 1f, 0.1f, v => v <= 0f ? "Off" : $"{v * 100f:F0}%"));
-                    list.Add(Choice("When knocked down", Plugin.FpRagdollView, ("Stay", "Stay in 1st person"), ("Diorama", "Diorama")));
-                    list.Add(Switch("Blackout when unconscious", Plugin.FpBlackout));
-                    list.Add(Switch("Steady eye height", Plugin.FpSteadyHeight, more: true));
-                    list.Add(Switch("Snap blink", Plugin.FpSnapBlink, more: true));
-                    list.Add(Switch("Fade inside walls", Plugin.FpWallFade, more: true));
-                    list.Add(Slider("Smooth turn speed", Plugin.FpTurnSpeed, 30f, 360f, 15f, v => $"{v:F0}°/s", more: true, active: () => Plugin.FpTurning.Value == "Smooth"));
-                    list.Add(Slider("Camera smoothing", Plugin.FpSmoothing, 0f, 1f, 0.1f, v => $"{v * 100f:F0}%", more: true));
-                    break;
-                case "View":
-                    list.Add(new Row
-                    {
-                        Kind = Kind.Slider, Label = "Zoom (view height)", Entries = new ConfigEntryBase[] { Plugin.UnitsPerMetre },
-                        Desc = "How tall the diorama's view is in the room. Bigger = zoomed in. Also PageUp / PageDown.",
-                        Min = 0.6f, Max = 5.6f, Step = 0.05f, Get = () => 45f / Plugin.UnitsPerMetre.Value,
-                        Set = v => Plugin.UnitsPerMetre.Value = Mathf.Clamp(45f / v, 8f, 80f), Format = v => $"{v:F2} m",
-                    });
-                    list.Add(Slider("Diorama distance", Plugin.DioramaDistance, 0.4f, 3f, 0.05f, v => $"{v:F2} m"));
-                    list.Add(Slider("Window size", Plugin.FrameMargin, 0f, 2f, 0.05f, v => $"{v * 100f:F0}%"));
-                    list.Add(Switch("3D blocks", Plugin.VoxelsOn));
-                    list.Add(Choice("Fog (foggy layers)", Plugin.FogMode, ("Mist", "Mist"), ("Haze", "Haze"), ("Off", "Off")));
-                    list.Add(new Row
-                    {
-                        Kind = Kind.Slider, Label = "Fog strength", Entries = new ConfigEntryBase[] { Plugin.FogMist, Plugin.FogHaze },
-                        Desc = "How thick the mist (or haze) is at its thickest.", Active = () => Plugin.FogMode.Value != "Off",
-                        Min = 0f, Max = 1f, Step = 0.05f, Get = () => FogEntry().Value, Set = v => FogEntry().Value = v, Format = v => $"{v * 100f:F0}%",
-                    });
-                    list.Add(Switch("Hover highlight (diorama)", Plugin.HoverHighlight));
-                    list.Add(Switch("Rain", Plugin.VrRain));
-                    list.Add(Slider("Window edge fade", Plugin.FrameFade, 0f, 2f, 0.1f, v => $"{v:F1}", more: true));
-                    list.Add(Slider("Block front depth", Plugin.VoxelFront, 0f, 4f, 0.25f, v => $"{v:F2} blocks", more: true));
-                    list.Add(Slider("Block back depth", Plugin.VoxelBack, 0f, 6f, 0.25f, v => $"{v:F2} blocks", more: true));
-                    list.Add(Slider("Pop-up depth", Plugin.PopupScale, 0f, 3f, 0.1f, v => $"{v:F1}×", more: true));
-                    list.Add(OptSlider("Object depth", Plugin.ObjectDepthOn, Plugin.ObjectDepth, 0.25f, 4f, 0.25f, v => $"{v:F2} blocks", more: true));
-                    list.Add(OptSlider("Character thickness", Plugin.SlabsOn, Plugin.SlabThickness, 0.05f, 1.5f, 0.05f, v => $"{v:F2} blocks", more: true));
-                    list.Add(OptSlider("Liquid depth (surface)", Plugin.LiquidDepthOn, Plugin.LiquidSurfaceAlpha, 0f, 1f, 0.05f, v => $"{v * 100f:F0}%", more: true));
-                    break;
                 case "First person":
-                    // The mode switch is not reset with its page.
-                    list.Add(new Row
-                    {
-                        Kind = Kind.Switch, Label = $"First person ({Plugin.FpKey.Value})", NoReset = true, Entries = new ConfigEntryBase[] { Plugin.FpOn },
-                        Desc = Plugin.FpOn.Description.Description, GetOn = () => Plugin.FpWanted, SetOn = on => { Plugin.FpForced = false; Plugin.FpOn.Value = on; },
-                    });
                     list.Add(Choice("Tunnel sides", Plugin.FpSides, ("CaveWalls", "Cave walls"), ("Void", "Void")));
                     list.Add(Slider("Void darkness far off", Plugin.FpVoidDarkness, 0f, 1f, 0.1f, v => $"{v * 100f:F0}%", active: () => Plugin.FpSides.Value == "Void"));
                     list.Add(Switch("Characters face you", Plugin.FpBillboards));
                     list.Add(Switch("Objects face you", Plugin.FpFaceObjects));
-                    list.Add(Choice("Highlight under your hand", Plugin.FpHighlight, ("Off", "Off"), ("Blocks", "Blocks"), ("All", "All")));
+                    list.Add(Choice("Target highlight", Plugin.FpHighlight, ("Off", "Off"), ("Blocks", "Blocks"), ("All", "All")));
                     list.Add(Slider("View distance", Plugin.FpViewDistance, 20f, 200f, 10f, v => $"{v:F0} blocks"));
                     list.Add(Switch("Sound from your head", Plugin.FpSoundAtHead));
-                    list.Add(Slider("Tunnel width", Plugin.FpCorridor, 1f, 12f, 0.5f, v => $"{v:F1} blocks", more: true));
+                    list.Add(Slider("Tunnel width", Plugin.FpCorridor, 1f, 12f, 0.5f, v => $"{v:F1} blocks"));
+                    list.Add(Slider("Camera smoothing", Plugin.FpSmoothing, 0f, 1f, 0.1f, v => $"{v * 100f:F0}%", more: true));
                     list.Add(new Row
                     {
                         Kind = Kind.Choice, Label = "World scale", Entries = new ConfigEntryBase[] { Plugin.FpUnitsPerMetre }, More = true,
@@ -1004,171 +796,38 @@ namespace CasualtyVR
                         Set = v => Plugin.FpUnitsPerMetre.Value = v, Format = v => $"{v:F1}",
                     });
                     break;
-                case "Hands & body":
-                    list.Add(Switch("Character looks where you look", Plugin.FpLookWithHead));
-                    list.Add(Choice("Aim with", Plugin.FpAimWith, ("Hand", "Hand"), ("Head", "Head")));
-                    list.Add(Choice("Grab", Plugin.FpGrabMode, ("Hold", "Hold grip"), ("Toggle", "Toggle")));
-                    list.Add(Switch("Swing to attack", Plugin.FpSwingAttack));
-                    list.Add(Switch("Distance pull", Plugin.FpDistancePull));
-                    list.Add(Switch("Hand on what you can grab", Plugin.FpGrabGlow));
-                    list.Add(OptSlider("Crouch for real", Plugin.FpRealCrouch, Plugin.FpCrouchDepth, 0.15f, 0.6f, 0.05f, v => $"{v * 100f:F0} cm down"));
-                    list.Add(OptSlider("Vibration", Plugin.Haptics, Plugin.HapticStrength, 0.1f, 1f, 0.1f, v => $"{v * 100f:F0}%"));
-                    list.Add(Switch("Heartbeat when in danger", Plugin.HapticHeartbeat));
-                    list.Add(Switch("Vibrate when hurt", Plugin.HapticDamage, more: true));
-                    list.Add(Switch("Vibrate when a hit lands", Plugin.HapticHits, more: true));
-                    list.Add(Switch("Hand poses", Plugin.FpHandPoses, more: true));
-                    list.Add(Switch("Touch minigames", Plugin.FpMinigameTouch, more: true));
-                    list.Add(OptSlider("Controller hands (diorama)", Plugin.ShowHands, Plugin.HandSize, 0.03f, 0.3f, 0.01f, v => $"{v * 100f:F0} cm", more: true));
-                    list.Add(OptSlider("Your arms (thickness)", Plugin.FpArms, Plugin.FpArmThickness, 0.1f, 2f, 0.1f, v => $"{v:F1}×", more: true));
-                    list.Add(OptSlider("Your body (thickness)", Plugin.FpBody, Plugin.FpBodyDepth, 0.2f, 2f, 0.1f, v => $"{v:F1}×", more: true));
-                    list.Add(Slider("Body behind your eyes", Plugin.FpBodyBack, -0.2f, 1f, 0.05f, v => $"{v * 100f:F0} cm", more: true));
-                    // Motion takes (Phase 4a, FP 9f): real swings and throws recorded here, replayed headless against the recipes.
+                case "3D world":
+                    list.Add(Choice("Fog", Plugin.FogMode, ("Mist", "Mist"), ("Haze", "Haze"), ("Off", "Off")));
                     list.Add(new Row
                     {
-                        Kind = Kind.Choice, Label = "Record a motion take", More = true, NoReset = true,
-                        Desc = "Records 20 s of your hand motion for testing the swing and throw detection. Pick one: the menu closes, 5 ticks, then record. Swings: 5 sword swings. Throws: 5 throws (pick something up each time). Other: ordinary moves that should not attack (reaching, eating, looking around). A long buzz starts and ends it.",
-                        Options = MotionTakes.Labels,
-                        GetIndex = () => MotionTakes.Recording == null ? -1 : Array.FindIndex(MotionTakes.Labels, l => MotionTakes.Recording.StartsWith(l)),
-                        SetIndex = i => { MotionTakes.Start(MotionTakes.Labels[i]); Close(); },
+                        Kind = Kind.Slider, Label = "Fog strength", Entries = new ConfigEntryBase[] { Plugin.FogMist, Plugin.FogHaze },
+                        Desc = "How thick the fog is at its maximum.", Active = () => Plugin.FogMode.Value != "Off",
+                        Min = 0f, Max = 1f, Step = 0.05f, Get = () => FogEntry().Value, Set = v => FogEntry().Value = v, Format = v => $"{v * 100f:F0}%",
                     });
+                    list.Add(OptSlider("Extruded objects", Plugin.ObjectDepthOn, Plugin.ObjectDepth, 0.25f, 4f, 0.25f, v => $"{v:F2} blocks"));
+                    list.Add(OptSlider("Character thickness", Plugin.SlabsOn, Plugin.SlabThickness, 0.05f, 1.5f, 0.05f, v => $"{v:F2} blocks"));
+                    list.Add(OptSlider("Liquid depth", Plugin.LiquidDepthOn, Plugin.LiquidSurfaceAlpha, 0f, 1f, 0.05f, v => $"{v * 100f:F0}%", more: true));
+                    list.Add(Slider("3D depth scale", Plugin.PopupScale, 0f, 3f, 0.1f, v => $"{v:F1}×", more: true));
                     break;
-                case "Controls":
-                    foreach (var kv in Plugin.ControlBinds)
-                    {
-                        var entry = kv.Value;
-                        list.Add(new Row
-                        {
-                            Kind = Kind.Stepper, Label = ControlLabel(kv.Key), Entries = new ConfigEntryBase[] { entry }, Control = kv.Key,
-                            Desc = $"The game action for the {ControlLabel(kv.Key).ToLowerInvariant()}. In first person the sticks walk, climb and turn.",
-                            Value = () => ActionName(entry.Value),
-                            StepBy = d =>
-                            {
-                                int i = Array.IndexOf(VrInput.Actions, entry.Value);
-                                i = ((i < 0 ? 0 : i) + d + VrInput.Actions.Length) % VrInput.Actions.Length;
-                                entry.Value = VrInput.Actions[i];
-                            },
-                        });
-                    }
-                    list.Add(Choice("Laser hand", Plugin.LaserHand, ("Right", "Right"), ("Left", "Left"), more: true));
-                    list.Add(Switch("Show the laser beam", Plugin.ShowLaser, more: true));
-                    list.Add(Slider("Minigame hand X", Plugin.MinigameHandX, -400f, 400f, 10f, v => $"{v:F0} px", more: true));
-                    list.Add(Slider("Minigame hand Y", Plugin.MinigameHandY, -400f, 400f, 10f, v => $"{v:F0} px", more: true));
-                    break;
-                case "Menus & HUD":
-                    list.Add(Slider("HUD size", Plugin.HudScale, 0.5f, 2f, 0.1f, v => $"{v * 100f:F0}%"));
-                    list.Add(Switch("Zoom the game's menus", Plugin.ZoomGameMenus));
-                    list.Add(Choice("Cursor", Plugin.CursorStyle, ("Hand", "Hand"), ("Cursor", "Arrow"), ("Off", "Off")));
-                    list.Add(new Row
-                    {
-                        Kind = Kind.Slider, Label = "Cursor size", Entries = new ConfigEntryBase[] { Plugin.HandCursorSize, Plugin.CursorSize },
-                        Desc = "Size of the cursor drawn on the menu panels.", Active = () => Plugin.CursorStyle.Value != "Off",
-                        Min = 0.5f, Max = 20f, Step = 0.5f,
-                        Get = () => (Plugin.CursorStyle.Value == "Hand" ? Plugin.HandCursorSize.Value : Plugin.CursorSize.Value) * 100f,
-                        Set = v => { if (Plugin.CursorStyle.Value == "Hand") Plugin.HandCursorSize.Value = Mathf.Clamp(v / 100f, 0.01f, 0.2f); else Plugin.CursorSize.Value = Mathf.Clamp(v / 100f, 0.005f, 0.1f); },
-                        Format = v => $"{v:F1} cm",
-                    });
-                    list.Add(Slider("Settings panel distance", Plugin.SettingsDistance, 0.4f, 1.5f, 0.05f, v => $"{v:F2} m", more: true));
-                    list.Add(Slider("Settings panel height", Plugin.SettingsHeight, -0.6f, 0.3f, 0.02f, v => $"{v * 100f:F0} cm", more: true));
-                    list.Add(Slider("Settings panel width", Plugin.SettingsWidth, 0.5f, 1.6f, 0.05f, v => $"{v:F2} m", more: true));
-                    list.Add(Slider("Dashboard distance", Plugin.DashboardDistance, 0.3f, 2f, 0.05f, v => $"{v:F2} m", more: true));
-                    list.Add(Slider("Dashboard height", Plugin.DashboardHeight, -1.5f, 0.5f, 0.05f, v => $"{v * 100f:F0} cm", more: true));
-                    list.Add(Slider("Dashboard width", Plugin.DashboardWidth, 0.4f, 3f, 0.1f, v => $"{v:F1} m", more: true));
-                    list.Add(Slider("Main menu width", Plugin.MenuWidth, 0.6f, 3f, 0.1f, v => $"{v:F1} m", more: true));
-                    break;
-                case "Passthrough":
-                    list.Add(new Row
-                    {
-                        Kind = Kind.Switch, Label = "Passthrough greenscreen", NoReset = true, Entries = new ConfigEntryBase[] { Plugin.Greenscreen },
-                        Desc = Plugin.Greenscreen.Description.Description, GetOn = () => Plugin.Greenscreen.Value, SetOn = on => Plugin.Greenscreen.Value = on,
-                    });
-                    list.Add(new Row
-                    {
-                        Kind = Kind.Choice, Label = "Key colour", Entries = new ConfigEntryBase[] { Plugin.GreenscreenColor },
-                        Desc = "The colour your passthrough app keys out (Virtual Desktop: match its setting). Exact values under More settings.",
-                        Options = KeyPresets.Select(p => p.name).ToArray(),
-                        GetIndex = () => Array.FindIndex(KeyPresets, p => p.c == Plugin.GreenscreenColor.Value),
-                        SetIndex = i => Plugin.GreenscreenColor.Value = KeyPresets[i].c,
-                    });
-                    list.Add(Channel("Red", 0));
-                    list.Add(Channel("Green", 1));
-                    list.Add(Channel("Blue", 2));
-                    break;
-                case "About":
-                    list.Add(Info("CasualtyVR", () => $"{Plugin.Version}, tested with the game's {Plugin.TestedGameVersion}"));
-                    list.Add(Info("Game version", () => Application.version + (Plugin.UntestedGameVersion ? " (not tested)" : "")));
-                    list.Add(Info($"{Plugin.ToggleKey.Value}", () => "VR on / off"));
-                    list.Add(Info($"{Plugin.RecenterKey.Value}", () => "Recenter"));
-                    list.Add(Info($"{Plugin.FpKey.Value}", () => "First person / diorama"));
-                    list.Add(Info($"{Plugin.VoxelKey.Value}", () => "3D blocks / flat"));
-                    list.Add(Info($"{Plugin.DashboardKey.Value}", () => "Show the dashboard"));
-                    list.Add(Info($"{Plugin.SettingsKey.Value}", () => "This menu"));
-                    list.Add(Info($"{Plugin.ZoomInKey.Value} / {Plugin.ZoomOutKey.Value}", () => "Zoom the diorama"));
-                    list.Add(Info("Logs", () => "BepInEx\\LogOutput.log, BepInEx\\CasualtyVR-bridge.log"));
-                    list.Add(Info("Settings file", () => "BepInEx\\config\\casualtyvr.core.cfg"));
+                case "Desktop":
+                    list.Add(Slider("Mouse sensitivity", Plugin.DesktopMouseSensitivity, 0.1f, 10f, 0.1f, v => $"{v:F1}×"));
+                    list.Add(Slider("Field of view", Plugin.DesktopFieldOfView, 40f, 120f, 1f, v => $"{v:F0}°"));
+                    list.Add(Switch("Terrain minimap", Plugin.DesktopMinimap));
+                    list.Add(Info("F6", () => "Toggle first-person view"));
+                    list.Add(Info(Plugin.DesktopDioramaKey.Value.ToString(), () => "Return to the original side-on diorama view"));
+                    list.Add(Info("W / S", () => "Move forward / backward relative to the view"));
+                    list.Add(Info("A / D", () => "Strafe; movement projects into the game world"));
+                    list.Add(Info("Diagonal", () => "Normalized for consistent 3D speed"));
+                    list.Add(Info("Space", () => "Jump"));
+                    list.Add(Info("Shift", () => "Crouch"));
+                    list.Add(Info("Esc", () => "Close this menu"));
+                    list.Add(Info("F12", () => "Open or close 3D settings"));
                     break;
             }
             return list;
         }
 
         private static ConfigEntry<float> FogEntry() => Plugin.FogMode.Value == "Haze" ? Plugin.FogHaze : Plugin.FogMist;
-
-        /// <summary>Running speed in metres per second (FP 8b), once the first-person scale is known; else the fraction.</summary>
-        private static string RunSpeedText(float fraction)
-        {
-            var body = PlayerCamera.main != null ? PlayerCamera.main.body : null;
-            float scale = FirstPerson.ScaleEstimate;
-            if (body == null || scale <= 0f || body.maxSpeed <= 0f) return $"{fraction * 100f:F0}%";
-            return $"{body.maxSpeed * fraction / scale:F1} m/s";
-        }
-
-        private static string ControlLabel(string control)
-        {
-            switch (control)
-            {
-                case "R.trigger": return "Right trigger";
-                case "R.grip": return "Right grip";
-                case "L.trigger": return "Left trigger";
-                case "L.grip": return "Left grip";
-                case "BothGrips": return "Both grips";
-                case "R.stickUp": return "Right stick up";
-                case "R.stickDown": return "Right stick down";
-                case "R.stickClick": return "Right stick click";
-                case "L.stickUp": return "Left stick up";
-                case "L.stickDown": return "Left stick down";
-                case "L.stickLeft": return "Left stick left";
-                case "L.stickRight": return "Left stick right";
-                case "L.stickClick": return "Left stick click";
-                case "Menu": return "Menu button";
-                default: return control + " button";
-            }
-        }
-
-        /// <summary>The game's own name for an action, as its keybind settings show it (in the game's language).</summary>
-        private static string ActionName(string action)
-        {
-            if (string.IsNullOrEmpty(action) || action == "none") return "None";
-            string key = "gameset" + action;
-            string name = Locale.GetOther(key);
-            return string.IsNullOrEmpty(name) || name == key ? action : name;
-        }
-
-        private static Row Channel(string label, int ch)
-        {
-            return new Row
-            {
-                Kind = Kind.Slider, Label = label + " (key colour)", More = true, Entries = new ConfigEntryBase[] { Plugin.GreenscreenColor },
-                Desc = "One channel of the key colour, for a custom colour.",
-                Min = 0f, Max = 1f, Step = 0.05f, Get = () => Plugin.GreenscreenColor.Value[ch],
-                Set = v =>
-                {
-                    var c = Plugin.GreenscreenColor.Value;
-                    c[ch] = v;
-                    c.a = 1f;
-                    Plugin.GreenscreenColor.Value = c;
-                },
-                Format = v => $"{v:F2}",
-            };
-        }
 
         private static Row Switch(string label, ConfigEntry<bool> e, bool more = false) => new Row
         {
@@ -1248,42 +907,6 @@ namespace CasualtyVR
                 if (dp < minDp) { minDp = dp; minText = $"'{t.text}'"; }
             }
             Plugin.Log.LogInfo($"VR settings check: tab '{tab}'{(showMore ? " (more)" : "")}: {n} targets, smallest {minAng:F1}° ({minName}) {(minAng >= 2.5f ? "OK" : "FAIL")}; smallest text {minDp:F0} dp ({minText}) {(minDp >= 14f ? "OK" : "LOW")}");
-        }
-
-        /// <summary>
-        /// --cvr-dbg-menu-aim: the xr-sim "hand r point &lt;yaw&gt; &lt;pitch&gt;" that points the right hand's laser at a few
-        /// controls (tools/vr-menu.ps1 clicks them). xr-sim aims relative to the head: yaw left-positive, pitch up.
-        /// </summary>
-        private void LogAims()
-        {
-            var ui = VrUi.Current;
-            if (ui == null || !VrInput.HandTracking(1, out Vector3 hand, out _)) { Plugin.Log.LogWarning("VR settings aim: no panel or right hand"); return; }
-            var targets = new List<(string name, RectTransform t, float fx)>();
-            void Add(string name, string path, float fx = 0.5f)
-            {
-                var t = root.transform.Find("Panel/" + path) as RectTransform;
-                if (t != null && t.gameObject.activeInHierarchy) targets.Add((name, t, fx));
-            }
-            Add("control R.trigger", "Body/Control R.trigger");
-            Add("action jump", "Body/Action jump");
-            Add("action back", "Body/Button Back");
-            Add("tab View", "Button View");
-            Add("switch Blackout", "Body/Row Blackout when unconscious");
-            Add("segment Snap", "Body/Row Turning/Button Snap");
-            Add("slider Fall vignette 0.2", "Body/Row Fall vignette/Slider", 0.2f);
-            Add("slider Fall vignette 0.8", "Body/Row Fall vignette/Slider", 0.8f);
-            Add("segment Moderate", "Body/Row Comfort preset/Button Moderate");
-            Add("more", "Button More settings");
-            var c = new Vector3[4];
-            foreach (var (name, t, fx) in targets)
-            {
-                t.GetWorldCorners(c);
-                var px = new Vector2(Mathf.Lerp(c[0].x, c[2].x, fx), (c[0].y + c[2].y) * 0.5f);
-                if (!ui.SettingsPixelToWorld(px, out Vector3 world)) continue;
-                Vector3 dir = Quaternion.Inverse(VrSpace.HeadTrackingRot) * (VrSpace.ToTracking(world) - hand);
-                float yaw = Mathf.Atan2(-dir.x, dir.z) * Mathf.Rad2Deg, pitch = Mathf.Asin(dir.y / dir.magnitude) * Mathf.Rad2Deg;
-                Plugin.Log.LogInfo($"VR settings aim '{name}': point {yaw:F2} {pitch:F2}");
-            }
         }
 
         // ---- uGUI helpers ----------------------------------------------------------------------------

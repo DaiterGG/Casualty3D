@@ -117,7 +117,7 @@ namespace CasualtyVR
                 scale.z = Mathf.Max(0.01f, p.Depth * s);
                 var fix = p.Torso ? torsoFix : legFix;
                 Vector3 pos = pivot + fix * (new Vector3(t.position.x, t.position.y, pivot.z) - pivot);
-                pos.z = p.Side * s;
+                pos.z = (DesktopFirstPerson.IsMovementActive ? VrSpace.HeadPosition.z : 0f) + p.Side * s;
                 p.Go.transform.SetPositionAndRotation(pos + shift, fix * t.rotation);
                 p.Go.transform.localScale = scale;
                 if (p.Renderer.sharedMaterial != src.sharedMaterial) p.Renderer.sharedMaterial = src.sharedMaterial;

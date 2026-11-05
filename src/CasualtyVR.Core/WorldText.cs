@@ -116,6 +116,11 @@ namespace CasualtyVR
 
         private void OnBegin(ScriptableRenderContext ctx, Camera cam)
         {
+            if (FirstPerson.Active && DesktopFirstPerson.IsRenderCamera(cam))
+            {
+                PositionDesktopTalkText(cam);
+                return;
+            }
             if (!FirstPerson.Active || !hasDir || VrRig.Instance == null || !VrRig.Instance.IsEyeCamera(cam)) return;
             FirstPerson.RenderTime.Start();
             Vector3 head = VrSpace.HeadPosition;
@@ -181,8 +186,31 @@ namespace CasualtyVR
             FirstPerson.RenderTime.Stop();
         }
 
+        private void PositionDesktopTalkText(Camera cam)
+        {
+            var body = talkerBody;
+            var text = ownText;
+            if (body == null || body.limbs == null || body.limbs.Length == 0
+                || body.limbs[0] == null || text == null || !text.isActiveAndEnabled || string.IsNullOrEmpty(text.text))
+                return;
+
+            var head = body.limbs[0];
+            var headCollider = head.GetComponentInChildren<Collider2D>();
+            float headTop = headCollider != null ? headCollider.bounds.max.y : head.transform.position.y + 0.5f;
+            var t = text.transform;
+            var r = text.renderer;
+            moved.Add((t, t.position, t.rotation, t.localScale, r,
+                r != null ? r.sortingLayerID : 0, r != null ? r.sortingOrder : 0));
+
+            Vector3 position = head.transform.position;
+            position.y = headTop + 0.15f;
+            t.SetPositionAndRotation(position, Quaternion.LookRotation(cam.transform.forward, cam.transform.up));
+            t.localScale *= 0.5f;
+        }
+
         private void OnEnd(ScriptableRenderContext ctx, Camera cam)
         {
+            if (moved.Count == 0) return;
             for (int i = moved.Count - 1; i >= 0; i--)
             {
                 var m = moved[i];

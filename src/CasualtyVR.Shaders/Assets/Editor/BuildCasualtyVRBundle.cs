@@ -4,8 +4,8 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 // Batch mode: Unity.exe -batchmode -quit -projectPath <this> -executeMethod BuildCasualtyVRBundle.Build
-// Builds Bundles/casualtyvr_shaders (D3D11, Windows x64) with the CasualtyVR fog variants of URP 14.0.12's 2D sprite
-// shaders, for the game's own URP 14.0.12.
+// Builds Bundles/casualtyvr_shaders (D3D11, Windows x64) with the CasualtyVR fog and flashlight variants of URP
+// 14.0.12's 2D sprite shaders, for the game's own URP 14.0.12.
 public static class BuildCasualtyVRBundle
 {
     public static void Build()

@@ -29,6 +29,7 @@ Shader "CasualtyVR/Sprite-Unlit-Fog"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/2D/Include/Core2D.hlsl"
             #include "Assets/CasualtyVR/Shaders/CasualtyVRFog.hlsl"
+            #include "Assets/CasualtyVR/Shaders/CasualtyVRFlashlight.hlsl"
             #if defined(DEBUG_DISPLAY)
             #include "Packages/com.unity.render-pipelines.universal/Shaders/2D/Include/InputData2D.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/2D/Include/SurfaceData2D.hlsl"
@@ -109,6 +110,7 @@ Shader "CasualtyVR/Sprite-Unlit-Fog"
                 }
                 #endif
 
+                mainTex.rgb = CvrApplyFlashlight(mainTex.rgb, i.cvrPosWS);
                 return CvrFog(mainTex, i.cvrPosWS);
             }
             ENDHLSL
@@ -121,6 +123,7 @@ Shader "CasualtyVR/Sprite-Unlit-Fog"
             HLSLPROGRAM
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/2D/Include/Core2D.hlsl"
+            #include "Assets/CasualtyVR/Shaders/CasualtyVRFlashlight.hlsl"
             #if defined(DEBUG_DISPLAY)
             #include "Packages/com.unity.render-pipelines.universal/Shaders/2D/Include/InputData2D.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/2D/Include/SurfaceData2D.hlsl"
@@ -147,6 +150,7 @@ Shader "CasualtyVR/Sprite-Unlit-Fog"
                 float4  positionCS      : SV_POSITION;
                 float4  color           : COLOR;
                 float2  uv              : TEXCOORD0;
+                float3  cvrPosWS        : TEXCOORD3;
                 #if defined(DEBUG_DISPLAY)
                 float3  positionWS      : TEXCOORD2;
                 #endif
@@ -169,8 +173,9 @@ Shader "CasualtyVR/Sprite-Unlit-Fog"
                 attributes.positionOS = UnityFlipSprite(attributes.positionOS, unity_SpriteFlip);
 #endif
                 o.positionCS = TransformObjectToHClip(attributes.positionOS);
+                o.cvrPosWS = TransformObjectToWorld(attributes.positionOS);
                 #if defined(DEBUG_DISPLAY)
-                o.positionWS = TransformObjectToWorld(attributes.positionOS);
+                o.positionWS = o.cvrPosWS;
                 #endif
                 o.uv = TRANSFORM_TEX(attributes.uv, _MainTex);
                 o.color = attributes.color * _Color * _RendererColor;
@@ -199,6 +204,7 @@ Shader "CasualtyVR/Sprite-Unlit-Fog"
                 }
                 #endif
 
+                mainTex.rgb = CvrApplyFlashlight(mainTex.rgb, i.cvrPosWS);
                 return mainTex;
             }
             ENDHLSL

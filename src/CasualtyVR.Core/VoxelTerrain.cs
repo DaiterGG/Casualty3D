@@ -8,9 +8,10 @@ namespace CasualtyVR
 {
     /// <summary>
     /// Phase 4: the terrain as real 3D blocks for the headset (the DramaticShapeVoxelMod idea: extrude the
-    /// 2D terrain into geometry). One mesh per game chunk, built from the chunk Tilemap's own sprites,
-    /// per-cell transforms (the game randomly rotates/flips tiles) and tints, so the front faces match the
-    /// flat art exactly. Side faces exist only next to empty cells and are streaked from the tile's edge texels.
+    /// 2D terrain into geometry). One mesh per game chunk, built from each tile's central block-sized sprite
+    /// crop, per-cell transforms (the game randomly rotates/flips tiles) and tints. Oversized sprite overhangs
+    /// are discarded so transparent art outside the solid tile core cannot create dark depth artifacts.
+    /// Side faces exist only next to empty cells and are streaked from the tile's edge texels.
     ///
     /// Only the eye cameras see it (layer 25). While an eye renders, the 2D chunk TilemapRenderers are hidden
     /// with forceRenderingOff, which leaves `enabled` alone: the game uses `enabled` for chunk logic
@@ -236,10 +237,9 @@ namespace CasualtyVR
                         var tris = cur.For(tex);
                         Matrix4x4 inv = map.GetTransformMatrix(cell).inverse;
                         Color tint = map.GetColor(cell);
-                        Rect r = sp.textureRect;
                         float x0 = lx - half, y0 = ly - half, x1 = x0 + 1f, y1 = y0 + 1f;
-                        Vector2 uv00 = Uv(inv, r, tex, -0.5f, -0.5f), uv10 = Uv(inv, r, tex, 0.5f, -0.5f),
-                                uv11 = Uv(inv, r, tex, 0.5f, 0.5f), uv01 = Uv(inv, r, tex, -0.5f, 0.5f);
+                        Vector2 uv00 = Uv(inv, sp, -0.5f, -0.5f), uv10 = Uv(inv, sp, 0.5f, -0.5f),
+                            uv11 = Uv(inv, sp, 0.5f, 0.5f), uv01 = Uv(inv, sp, -0.5f, 0.5f);
 
                         if (pass == 1)
                         {
@@ -250,11 +250,13 @@ namespace CasualtyVR
                         if (glassy)   // back pane
                             Quad(tris, new Vector3(x0, y0, zb), new Vector3(x1, y0, zb), new Vector3(x1, y1, zb), new Vector3(x0, y1, zb),
                                  uv00, uv10, uv11, uv01, Shade(tint, 0.8f));
-                        if (up) Side(tris, 0, new Vector2(x0, y1), new Vector2(x1, y1), zf, zb, inv, r, tex, Shade(tint, 0.95f));
-                        if (down) Side(tris, 1, new Vector2(x0, y0), new Vector2(x1, y0), zf, zb, inv, r, tex, Shade(tint, 0.55f));
-                        if (left) Side(tris, 2, new Vector2(x0, y0), new Vector2(x0, y1), zf, zb, inv, r, tex, Shade(tint, 0.75f));
-                        if (right) Side(tris, 3, new Vector2(x1, y0), new Vector2(x1, y1), zf, zb, inv, r, tex, Shade(tint, 0.75f));
+                        if (up) Side(tris, 0, new Vector2(x0, y1), new Vector2(x1, y1), zf, zb, inv, sp, Shade(tint, 0.95f));
+                        if (down) Side(tris, 1, new Vector2(x0, y0), new Vector2(x1, y0), zf, zb, inv, sp, Shade(tint, 0.55f));
+                        if (left) Side(tris, 2, new Vector2(x0, y0), new Vector2(x0, y1), zf, zb, inv, sp, Shade(tint, 0.75f));
+                        if (right) Side(tris, 3, new Vector2(x1, y0), new Vector2(x1, y1), zf, zb, inv, sp, Shade(tint, 0.75f));
                     }
+
+            AddTopBoundary(world, c, size, half, zf, zb);
 
             if (!meshes.TryGetValue(c, out var cm))
             {
@@ -279,6 +281,40 @@ namespace CasualtyVR
             var clearList = Upload(cm.ClearMesh, clear, world);
             cm.ClearRenderer.sharedMaterials = clearList;
             cm.ClearRenderer.enabled = clearList.Length > 0;
+        }
+
+        private void AddTopBoundary(WorldGeneration world, Vector2Int chunk, int size, int half, float zf, float zb)
+        {
+            if (chunk.y != world.renderChunks.GetLength(1) - 1 || world.tiles == null || world.tiles.Length <= 1
+                || world.tileColors == null || world.tileColors.Length <= 1) return;
+            Sprite stone = (world.tiles[1] as Tile)?.sprite;
+            if (stone == null) return;
+
+            int height = (int)world.height;
+            int localY = height - chunk.y * size;
+            float y0 = localY - half, y1 = y0 + 1f;
+            Texture tex = stone.texture;
+            Matrix4x4 transform = Matrix4x4.identity;
+            Color tint = world.tileColors[1];
+            Vector2 uv00 = Uv(transform, stone, -0.5f, -0.5f), uv10 = Uv(transform, stone, 0.5f, -0.5f),
+                uv11 = Uv(transform, stone, 0.5f, 0.5f), uv01 = Uv(transform, stone, -0.5f, 0.5f);
+            cur = solid;
+            var tris = solid.For(tex);
+            for (int lx = 0; lx < size; lx++)
+            {
+                int bx = chunk.x * size + lx;
+                if (bx >= world.width) continue;
+                float x0 = lx - half, x1 = x0 + 1f;
+                Quad(tris, new Vector3(x0, y0, zf), new Vector3(x1, y0, zf), new Vector3(x1, y1, zf), new Vector3(x0, y1, zf),
+                    uv00, uv10, uv11, uv01, tint);
+                Side(tris, 0, new Vector2(x0, y1), new Vector2(x1, y1), zf, zb, transform, stone, Shade(tint, 0.95f));
+                if (Open(world, bx, height - 1, false))
+                    Side(tris, 1, new Vector2(x0, y0), new Vector2(x1, y0), zf, zb, transform, stone, Shade(tint, 0.55f));
+                if (lx == 0)
+                    Side(tris, 2, new Vector2(x0, y0), new Vector2(x0, y1), zf, zb, transform, stone, Shade(tint, 0.75f));
+                if (bx == (int)world.width - 1)
+                    Side(tris, 3, new Vector2(x1, y0), new Vector2(x1, y1), zf, zb, transform, stone, Shade(tint, 0.75f));
+            }
         }
 
         private static Mesh NewMesh(string name)
@@ -331,11 +367,17 @@ namespace CasualtyVR
         }
 
         // Texture UV for point (px,py) in tile space (-0.5..0.5), through the inverse of the tile's rotation/flip.
-        private static Vector2 Uv(Matrix4x4 inv, Rect r, Texture tex, float px, float py)
+        private static Vector2 Uv(Matrix4x4 inv, Sprite sprite, float px, float py)
         {
             Vector3 q = inv.MultiplyPoint3x4(new Vector3(px, py, 0f));
-            float u = Mathf.Clamp(q.x + 0.5f, 0.002f, 0.998f), v = Mathf.Clamp(q.y + 0.5f, 0.002f, 0.998f);
-            return new Vector2((r.x + u * r.width) / tex.width, (r.y + v * r.height) / tex.height);
+            Rect rect = sprite.textureRect;
+            Vector2 size = sprite.bounds.size;
+            // Terrain sprites may overhang their tile; sample only the centered one-world-unit tile region.
+            float sourceWidth = Mathf.Max(1f, size.x), sourceHeight = Mathf.Max(1f, size.y);
+            float u = Mathf.Clamp(0.5f + q.x / sourceWidth, 0.002f, 0.998f);
+            float v = Mathf.Clamp(0.5f + q.y / sourceHeight, 0.002f, 0.998f);
+            return new Vector2((rect.x + u * rect.width) / sprite.texture.width,
+                (rect.y + v * rect.height) / sprite.texture.height);
         }
 
         /// <summary>
@@ -344,7 +386,7 @@ namespace CasualtyVR
         /// segment boundaries (front edge row -> opposite row -> front edge row ...), so the side continues
         /// the front face seamlessly instead of streaking one texel row (headset feedback 2026-10-04).
         /// </summary>
-        private void Side(List<int> tris, int side, Vector2 a, Vector2 b, float zf, float zb, Matrix4x4 inv, Rect r, Texture tex, Color col)
+        private void Side(List<int> tris, int side, Vector2 a, Vector2 b, float zf, float zb, Matrix4x4 inv, Sprite sprite, Color col)
         {
             float depth = zb - zf;
             for (float d0 = 0f; d0 < depth - 1e-3f; d0 += 1f)
@@ -353,8 +395,8 @@ namespace CasualtyVR
                 // d0 is a whole block: even segments run front row -> opposite row, odd ones back again.
                 float f0 = Fold(d0), f1 = f0 + (Mathf.RoundToInt(d0) % 2 == 0 ? 1f : -1f) * (d1 - d0);
                 Quad(tris, new Vector3(a.x, a.y, zf + d0), new Vector3(b.x, b.y, zf + d0), new Vector3(b.x, b.y, zf + d1), new Vector3(a.x, a.y, zf + d1),
-                     SideUv(inv, r, tex, side, -0.5f, f0), SideUv(inv, r, tex, side, 0.5f, f0),
-                     SideUv(inv, r, tex, side, 0.5f, f1), SideUv(inv, r, tex, side, -0.5f, f1), col);
+                     SideUv(inv, sprite, side, -0.5f, f0), SideUv(inv, sprite, side, 0.5f, f0),
+                     SideUv(inv, sprite, side, 0.5f, f1), SideUv(inv, sprite, side, -0.5f, f1), col);
             }
         }
 
@@ -366,14 +408,14 @@ namespace CasualtyVR
         }
 
         // s runs along the block edge (-0.5..0.5), f from the front edge row (0) to the opposite row (1).
-        private static Vector2 SideUv(Matrix4x4 inv, Rect r, Texture tex, int side, float s, float f)
+        private static Vector2 SideUv(Matrix4x4 inv, Sprite sprite, int side, float s, float f)
         {
             switch (side)
             {
-                case 0: return Uv(inv, r, tex, s, 0.5f - f);
-                case 1: return Uv(inv, r, tex, s, -0.5f + f);
-                case 2: return Uv(inv, r, tex, -0.5f + f, s);
-                default: return Uv(inv, r, tex, 0.5f - f, s);
+                case 0: return Uv(inv, sprite, s, 0.5f - f);
+                case 1: return Uv(inv, sprite, s, -0.5f + f);
+                case 2: return Uv(inv, sprite, -0.5f + f, s);
+                default: return Uv(inv, sprite, 0.5f - f, s);
             }
         }
 

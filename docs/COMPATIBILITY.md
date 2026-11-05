@@ -84,7 +84,7 @@ the headset on 2026-10-18 (HEADSET).
 | Status icons (`KrokoshaMP_CharacterStatusIcon_*`, the alt-tab one included): SpriteRenderers on the character root, sorting order 6000, scale 9 | **1.2.2:** in first person they turn to face you, at most 4° tall | STATIC; LIVE (cloned character) |
 | `PauseHandler.Update` postfix keeps `Time.timeScale` in multiplayer; `SetTimeScale` prefix blocks slow-motion while anyone moves | Pause, the VR settings menu and the dashboard do not stop the game | STATIC |
 | `PlayerCamera.HandleInput` prefix skips the game's input while the chat box has focus | Controllers do nothing while typing in chat (by design) | STATIC |
-| Spectator mode: `PlayerCamera.main.following` = another player; the end screen is hidden | The diorama follows the spectated player (it follows the game's camera). First person stays on your own body (`PlayerCamera.main.body`): switch to the diorama (F7) to spectate | STATIC + INFERENCE |
+| Spectator mode: `PlayerCamera.main.following` = another player; the end screen is hidden | The diorama follows the spectated player (it follows the game's camera). First person stays on your own body (`PlayerCamera.main.body`): switch to the diorama (F6) to spectate | STATIC + INFERENCE |
 | Remote players are clones of the local character (`ServerMain.CHARACTER_PREFAB`) | Our test does the same (`--cvr-dbg-clone`) | STATIC |
 | `FluidManager.RenderFluids`: a counting prefix (`KrokV5Optimization.EvidenceParticles`) | No conflict with our postfix | STATIC |
 | `Body.PickUpItem` and the `PlayerCamera.Try*` actions are patched to sync | First-person grabs call `Body.PickUpItem`, so they go through its sync | STATIC |

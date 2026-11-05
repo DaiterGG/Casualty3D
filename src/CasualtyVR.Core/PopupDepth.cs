@@ -143,7 +143,7 @@ namespace CasualtyVR
                     // On the turned object's front face (ObjectExtruder turns the object to face the player).
                     var o = e.Owner.position;
                     var pivot = new Vector3(o.x, o.y, 0f);
-                    var r = FirstPerson.FaceYaw(pivot);
+                    var r = FirstPerson.FaceYaw(pivot, lockDesktopDepth: true);
                     var local = new Vector3(e.Original.x - o.x, e.Original.y - o.y, e.Depth * Scale);
                     e.Transform.SetPositionAndRotation(pivot + r * local, r * e.OriginalRot);
                     continue;
@@ -168,6 +168,13 @@ namespace CasualtyVR
             for (int i = 0; i < pinned.Count; i++)
                 if (pinned[i].r) { pinned[i].r.transform.SetPositionAndRotation(pinned[i].pos, pinned[i].rot); pinned[i].r.forceRenderingOff = pinned[i].off; }
             pinned.Clear();
+            for (int i = 0; i < crackDrawModes.Count; i++)
+                if (crackDrawModes[i].r)
+                {
+                    crackDrawModes[i].r.drawMode = crackDrawModes[i].mode;
+                    crackDrawModes[i].r.size = crackDrawModes[i].size;
+                }
+            crackDrawModes.Clear();
             applied = false;
         }
 
@@ -191,17 +198,23 @@ namespace CasualtyVR
                 if (owner != null && r.GetComponent<Collider2D>() == null)
                 {
                     if (ownerLog != null) { ownerLog.TryGetValue(owner.name + " (" + owner.GetType().Name + ")", out int c); ownerLog[owner.name + " (" + owner.GetType().Name + ")"] = c + 1; }
-                    var ownerSprite = owner.GetComponent<SpriteRenderer>();
+                    var ownerSprite = owner.GetComponentInParent<SpriteRenderer>();
                     if (ObjectExtruder.On && ownerSprite != null && ObjectExtruder.Extruded.Contains(ownerSprite))
                     {
+                        var ownerBuilding = owner.GetComponentInParent<BuildingEntity>();
                         int hd = 0;
                         for (var t = r.transform; t.parent != null; t = t.parent) hd++;
-                        // First person: background-band objects are extruded against the back wall (ObjectExtruder).
-                        float faceDepth = FirstPerson.Active && ownerSprite.sortingOrder <= -100
-                            ? FirstPerson.HalfWidth - Plugin.ObjectDepth.Value - 0.04f
-                            : -Plugin.ObjectDepth.Value * 0.5f - 0.02f;
+                        // Keep decorations on the same side of the tunnel as their extruded owner. Steel doors
+                        // and crystals are foreground objects even if their source sprite uses a background order.
+                        bool backWallObject = ownerSprite.sortingOrder <= -100
+                            && !ObjectExtruder.IsSteelDoor(ownerBuilding, ownerSprite)
+                            && !ObjectExtruder.IsCrystal(ownerBuilding);
+                        float objectDepth = ObjectExtruder.DecorationDepthFor(ownerBuilding, ownerSprite);
+                        float faceDepth = FirstPerson.Active && backWallObject
+                            ? FirstPerson.HalfWidth - objectDepth - 0.04f
+                            : -objectDepth * 0.5f - 0.02f;
                         entries.Add(new Entry { Transform = r.transform, Renderer = r, HierarchyDepth = hd, Depth = faceDepth,
-                                                Owner = FirstPerson.Active && ownerSprite.sortingOrder > -100 ? owner.transform : null });
+                                                Owner = FirstPerson.Active && !backWallObject ? owner.transform : null });
                     }
                     continue;
                 }
@@ -283,6 +296,8 @@ namespace CasualtyVR
         // in front of its object, offset and flickering against it (user report 2026-10-04). They are placed
         // on what they mark instead: a block's front face, or the actor plane for items and buildings.
         private static readonly List<(Renderer r, Vector3 pos, Quaternion rot, bool off)> pinned = new List<(Renderer, Vector3, Quaternion, bool)>();
+        private static readonly List<(SpriteRenderer r, SpriteDrawMode mode, Vector2 size)> crackDrawModes =
+            new List<(SpriteRenderer, SpriteDrawMode, Vector2)>();
 
         private static bool IsMarker(Renderer r)
         {
@@ -336,9 +351,46 @@ namespace CasualtyVR
                 if (sr == null) continue;
                 var t = sr.transform;
                 pinned.Add((sr, t.position, t.rotation, sr.forceRenderingOff));
-                if (FirstPerson.Active && voxels) PinFirstPerson(t, true);
+                if (FirstPerson.Active && voxels && DesktopFirstPerson.IsDesktopRenderActive)
+                {
+                    Vector3 normal = PinDesktopCrack(t);
+                    if (Mathf.Abs(normal.x) > 0.5f)
+                    {
+                        crackDrawModes.Add((sr, sr.drawMode, sr.size));
+                        sr.drawMode = SpriteDrawMode.Tiled;
+                        Vector2 size = sr.size;
+                        size.x = (VoxelTerrain.BackZ - VoxelTerrain.FrontZ) / Mathf.Max(0.001f, Mathf.Abs(t.localScale.x));
+                        sr.size = size;
+                    }
+                }
+                else if (FirstPerson.Active && voxels) PinFirstPerson(t, true, 0.56f);
                 else t.position = new Vector3(t.position.x, t.position.y, voxels ? VoxelTerrain.FrontZ - 0.03f * Scale : -0.8f * Scale);
             }
+        }
+
+        private static Vector3 PinDesktopCrack(Transform t)
+        {
+            var cam = PlayerCamera.main != null ? PlayerCamera.main.GetComponent<Camera>() : null;
+            if (cam == null)
+            {
+                PinFirstPerson(t, true, 0.56f);
+                return Vector3.zero;
+            }
+
+            Vector3 center = t.position;
+            Vector3 toCamera = cam.transform.position - center;
+            Vector3 normal;
+            float ax = Mathf.Abs(toCamera.x), ay = Mathf.Abs(toCamera.y), az = Mathf.Abs(toCamera.z);
+            if (ax >= ay && ax >= az) normal = new Vector3(Mathf.Sign(toCamera.x), 0f, 0f);
+            else if (ay >= az) normal = new Vector3(0f, Mathf.Sign(toCamera.y), 0f);
+            else normal = new Vector3(0f, 0f, Mathf.Sign(toCamera.z));
+
+            const float faceOffset = 0.52f;
+            Vector3 position = center + normal * faceOffset;
+            if (normal.z != 0f)
+                position.z = normal.z < 0f ? VoxelTerrain.FrontZ - 0.02f * Scale : VoxelTerrain.BackZ + 0.02f * Scale;
+            t.SetPositionAndRotation(position, Quaternion.FromToRotation(Vector3.back, normal));
+            return normal;
         }
 
         /// <summary>
@@ -346,7 +398,7 @@ namespace CasualtyVR
         /// the player sees: the face the aim ray entered if it is that block, else the side facing the player, at
         /// the aim's depth in the tunnel. Other markers (an item's outline) turn to face the player.
         /// </summary>
-        private static void PinFirstPerson(Transform t, bool block)
+        private static void PinFirstPerson(Transform t, bool block, float faceOffset = 0.51f)
         {
             Vector3 eye = VrSpace.HeadPosition;
             Vector3 c = t.position;
@@ -367,7 +419,7 @@ namespace CasualtyVR
                 z = 0f;
             }
             Quaternion rot = n.x != 0f ? Quaternion.Euler(0f, n.x > 0f ? -90f : 90f, 0f) : Quaternion.Euler(n.y > 0f ? 90f : -90f, 0f, 0f);
-            t.SetPositionAndRotation(new Vector3(c.x, c.y, z) + n * 0.51f, rot);
+            t.SetPositionAndRotation(new Vector3(c.x, c.y, z) + n * faceOffset, rot);
         }
 
         /// <summary>

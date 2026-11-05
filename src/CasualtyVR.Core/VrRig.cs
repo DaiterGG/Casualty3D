@@ -240,6 +240,7 @@ namespace CasualtyVR
         private void LateUpdate()
         {
             if (!Active) return;
+            DesktopFirstPerson.SuspendForVr();
             bool render = false, inputDone = false;
             if (info.sessionRunning != 0 && XrNative.cvr_xr_wait_frame(out var xrFrame) == 1)
             {
@@ -858,7 +859,8 @@ namespace CasualtyVR
         }
 
         private bool IsEye(Camera cam) => cam == eyes[0] || cam == eyes[1];
-        public bool IsEyeCamera(Camera cam) => cam != null && Active && IsEye(cam);
+        public bool IsEyeCamera(Camera cam) => cam != null &&
+            (Active && IsEye(cam) || DesktopFirstPerson.IsRenderCamera(cam));
 
         private void LogPerf()
         {
